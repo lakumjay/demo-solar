@@ -14,7 +14,7 @@ export default function MilestoneCelebrationModal({user, activeCompany, liveData
         return () => window.removeEventListener('solarflow_language_change', handler);
     }, []);
 
-    const ownerName = activeCompany?.owner_name || (user?.name === 'Super Admin' ? 'Lakum Jay' : user?.name) || 'Lakum Jay';
+    const ownerName = activeCompany?.owner_name || (user?.name && user.name !== 'Super Admin' ? user.name : 'Plant Director');
     const ownerTitle = activeCompany?.owner_designation || (currentLang === 'en' ? 'Solar Plant Owner & Director' : 'સોલાર પ્લાન્ટ ઓનર & ડિરેક્ટર');
     const ownerPhoto = activeCompany?.owner_photo_url || null;
 

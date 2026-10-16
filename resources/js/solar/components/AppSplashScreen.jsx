@@ -28,10 +28,10 @@ export default function AppSplashScreen({user, activeCompany, liveData, onFinish
         return 'શુભ રાત્રિ';
     };
 
-    const ownerName = activeCompany?.owner_name || user?.name || 'Lakum Jay';
+    const ownerName = activeCompany?.owner_name || (user?.name && user.name !== 'Super Admin' ? user.name : 'Plant Director');
     const ownerTitle = activeCompany?.owner_designation || (user?.role === 'super_admin' ? (currentLang === 'en' ? 'Solar Plant Owner & Director' : 'સોલાર પ્લાન્ટ ઓનર & ડિરેક્ટર') : (currentLang === 'en' ? 'Solar Plant Executive' : 'સોલાર પ્લાન્ટ એક્ઝિક્યુટિવ'));
     const ownerPhoto = activeCompany?.owner_photo_url || null;
-    const companyName = activeCompany?.name || 'Nilkanth / Rajeshwari Solar Plant';
+    const companyName = activeCompany?.name || 'Solar Power Plant Network';
 
     useEffect(() => {
         // Progress bar animation
