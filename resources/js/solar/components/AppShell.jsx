@@ -1,0 +1,579 @@
+import React, {useEffect, useState} from 'react';
+import {Activity, BarChart3, Boxes, Building2, CalendarCheck2, Camera, ChevronRight, ClipboardPlus, Clock3, CloudSun, Film, Gauge, Globe, IndianRupee, LogOut, Menu, Phone, Sparkles, Sun, UserCheck, Users, WalletCards, X, Zap} from 'lucide-react';
+import {api, logout} from '../api';
+import MobileAppView from './MobileAppView';
+import NotificationPermissionModal from './NotificationPermissionModal';
+import AppSplashScreen from './AppSplashScreen';
+import MilestoneCelebrationModal from './MilestoneCelebrationModal';
+import VoiceCallModal, {unlockVoiceCallAudio} from './VoiceCallModal';
+import EmergencyIncomingCallModal from './EmergencyIncomingCallModal';
+import ManageAiCallsModal from './ManageAiCallsModal';
+import {useTranslation} from '../context/LanguageContext';
+
+export default function AppShell({user, page, setPage, companies, companyId, setCompanyId, children}) {
+    const { t, lang: currentLang, toggleLanguage, setLang } = useTranslation();
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+    const [liveSolarData, setLiveSolarData] = useState(() => {
+        try {
+            const cached = localStorage.getItem('solarflow.cachedLiveSolar');
+            return cached ? JSON.parse(cached) : null;
+        } catch (e) {
+            return null;
+        }
+    });
+    const [showSplash, setShowSplash] = useState(() => {
+        try {
+            return !sessionStorage.getItem('solarflow_splash_shown');
+        } catch (e) {
+            return true;
+        }
+    });
+    const [showVoiceCall, setShowVoiceCall] = useState(false);
+    const [showManageCallsModal, setShowManageCallsModal] = useState(false);
+    const [emergencyCall, setEmergencyCall] = useState({
+        isOpen: false,
+        autoAnswer: false,
+        data: null
+    });
+
+    // 1. Check URL parameters on mount (?incoming_call=1 or ?emergency_call=1)
+    useEffect(() => {
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('incoming_call') || urlParams.has('emergency_call')) {
+                const autoAnswer = urlParams.get('auto_answer') === '1';
+                setEmergencyCall({
+                    isOpen: true,
+                    autoAnswer,
+                    data: {
+                        caller_name: '⚡ SolarFlow AI Emergency Dispatch',
+                        caller_number: '+91 1800-SOLAR-AI',
+                        alert_title: '🚨 ૬૬KV લાઇન ટ્રીપ / ઇન્વર્ટર બંધ',
+                        plant_name: 'ઓલ પ્લાન્ટ્સ (All Plants)',
+                        speech_text: 'નમસ્તે સુપર એડમિન! સોલાર પ્લાન્ટ પર ઇમરજન્સી એલર્ટ છે. ૬૬KV સબસ્ટેશન લાઇન ટ્રીપ થઈ ગઈ છે અથવા ઇન્વર્ટર બંધ છે. કુલ ઉત્પાદન ૦ kW થઈ ગયું છે. કૃપા કરીને તાત્કાલિક સાઇટ ટીમ અથવા ઇજનેરનો સંપર્ક કરો અને ગ્રીડ ચેક કરો.'
+                    }
+                });
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        } catch (_) {}
+    }, []);
+
+    // 2. Listen to ServiceWorker push message & custom window events
+    useEffect(() => {
+        const handleSwMessage = (e) => {
+            if (e.data?.type === 'EMERGENCY_VOICE_CALL') {
+                const callData = e.data.payload?.data?.call || e.data.payload?.call || e.data.payload;
+                setEmergencyCall({
+                    isOpen: true,
+                    autoAnswer: false,
+                    data: callData
+                });
+            } else if (e.data?.type === 'EMERGENCY_VOICE_CALL_ACCEPT') {
+                const callData = e.data.payload?.call || e.data.payload;
+                setEmergencyCall({
+                    isOpen: true,
+                    autoAnswer: true,
+                    data: callData
+                });
+            }
+        };
+
+        const handleCustomEmergencyEvent = (e) => {
+            setEmergencyCall({
+                isOpen: true,
+                autoAnswer: !!e.detail?.autoAnswer,
+                data: e.detail?.callData || null
+            });
+        };
+
+        if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', handleSwMessage);
+        }
+        window.addEventListener('solarflow:emergency_call', handleCustomEmergencyEvent);
+
+        return () => {
+            if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+                navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+            }
+            window.removeEventListener('solarflow:emergency_call', handleCustomEmergencyEvent);
+        };
+    }, []);
+
+    // 3. Smart AI Voice Call check for all roles (Employees, Company Founders/Admins, Managers & Super Admin)
+    useEffect(() => {
+        if (!user) return;
+
+        const checkEmergencyStatus = async () => {
+            try {
+                const res = await api('voice-agent/emergency-status');
+                if (res?.active && res?.call && !emergencyCall.isOpen) {
+                    setEmergencyCall({
+                        isOpen: true,
+                        autoAnswer: false,
+                        data: res.call
+                    });
+                }
+            } catch (_) {}
+        };
+
+        // Check immediately
+        checkEmergencyStatus();
+
+        // Poll every 12 seconds for incoming AI calls
+        const interval = setInterval(checkEmergencyStatus, 12000);
+
+        const handleTabActive = () => {
+            if (document.visibilityState === 'visible') {
+                checkEmergencyStatus();
+            }
+        };
+        document.addEventListener('visibilitychange', handleTabActive);
+        window.addEventListener('focus', handleTabActive);
+        window.addEventListener('pageshow', handleTabActive);
+
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', handleTabActive);
+            window.removeEventListener('focus', handleTabActive);
+            window.removeEventListener('pageshow', handleTabActive);
+        };
+    }, [user, emergencyCall.isOpen]);
+
+    useEffect(() => {
+        const checkMobile = () => {
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+            const isSmallScreen = window.innerWidth <= 768;
+            setIsMobile(isStandalone || isSmallScreen);
+        };
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
+    const fetchLiveSolar = async () => {
+        try {
+            const res = await api(`dashboard/live-solar?company_id=${companyId || 'all'}`);
+            if (res) {
+                setLiveSolarData(res);
+                // Also check if emergency call is dispatched inside live solar heartbeat
+                if (res.emergency_call && !emergencyCall.isOpen) {
+                    setEmergencyCall({
+                        isOpen: true,
+                        autoAnswer: false,
+                        data: res.emergency_call
+                    });
+                }
+                try {
+                    localStorage.setItem('solarflow.cachedLiveSolar', JSON.stringify(res));
+                } catch (e) {}
+            }
+        } catch (e) {
+            if (e?.message !== 'Unauthenticated.') {
+                console.error('Mobile live solar fetch error', e);
+            }
+        }
+    };
+
+    useEffect(() => {
+        fetchLiveSolar();
+        const timer = setInterval(fetchLiveSolar, 10000);
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                fetchLiveSolar();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleVisibilityChange);
+
+        return () => {
+            clearInterval(timer);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleVisibilityChange);
+        };
+    }, [companyId]);
+
+    // 📍 Real-Time Employee Live Location Tracking (Continuous watchPosition + multi-trigger ping)
+    useEffect(() => {
+        if (!user) return;
+
+        let watchId = null;
+        let lastPingTime = 0;
+        let lastLat = null;
+        let lastLng = null;
+
+        const sendPing = (latitude, longitude, accuracy = null, speed = null, heading = null, force = false) => {
+            const now = Date.now();
+            // Throttle pings to at most once per 15s unless forced or moved > 25 meters
+            if (!force && (now - lastPingTime < 15000)) {
+                return;
+            }
+
+            lastPingTime = now;
+            lastLat = latitude;
+            lastLng = longitude;
+
+            api('employee-locations/ping', {
+                method: 'POST',
+                body: JSON.stringify({
+                    latitude,
+                    longitude,
+                    accuracy,
+                    speed,
+                    heading,
+                    status_label: 'App Active'
+                })
+            }).catch(() => {});
+        };
+
+        const triggerInstantGps = (force = false) => {
+            if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
+
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    const rawSpeed = pos.coords.speed;
+                    const speedKmh = rawSpeed !== null && rawSpeed >= 0 ? Math.round(rawSpeed * 3.6) : null;
+                    sendPing(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, speedKmh, pos.coords.heading, force);
+                },
+                () => {
+                    // Fallback to low accuracy if satellite GPS takes long
+                    navigator.geolocation.getCurrentPosition(
+                        pos => {
+                            sendPing(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, null, null, force);
+                        },
+                        () => {},
+                        {enableHighAccuracy: false, timeout: 10000, maximumAge: 60000}
+                    );
+                },
+                {enableHighAccuracy: true, timeout: 12000, maximumAge: 10000}
+            );
+        };
+
+        // 1. Start continuous hardware GPS watch
+        if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+            try {
+                watchId = navigator.geolocation.watchPosition(
+                    pos => {
+                        const rawSpeed = pos.coords.speed;
+                        const speedKmh = rawSpeed !== null && rawSpeed >= 0 ? Math.round(rawSpeed * 3.6) : null;
+                        sendPing(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, speedKmh, pos.coords.heading);
+                    },
+                    () => {},
+                    {enableHighAccuracy: true, timeout: 20000, maximumAge: 10000}
+                );
+            } catch (e) {}
+        }
+
+        // 2. Immediate ping on load
+        triggerInstantGps(true);
+
+        // 3. Keepalive interval every 30s
+        const intervalId = setInterval(() => triggerInstantGps(false), 30000);
+
+        // 4. Instant ping whenever app becomes visible / focused / resumed
+        const handleResume = () => {
+            if (document.visibilityState === 'visible') {
+                triggerInstantGps(true);
+            }
+        };
+
+        // 5. Throttled ping on user interaction (tap/touch/click when using the app)
+        const handleUserInteraction = () => {
+            const now = Date.now();
+            if (now - lastPingTime > 25000) {
+                triggerInstantGps(false);
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleResume);
+        window.addEventListener('focus', handleResume);
+        window.addEventListener('pageshow', handleResume);
+        window.addEventListener('touchend', handleUserInteraction, {passive: true});
+        window.addEventListener('click', handleUserInteraction, {passive: true});
+
+        return () => {
+            if (watchId !== null && typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+            clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', handleResume);
+            window.removeEventListener('focus', handleResume);
+            window.removeEventListener('pageshow', handleResume);
+            window.removeEventListener('touchend', handleUserInteraction);
+            window.removeEventListener('click', handleUserInteraction);
+        };
+    }, [user?.id]);
+
+    const can = permission => user?.role === 'super_admin' || (Array.isArray(user?.permissions) && user.permissions.includes(permission));
+    const isAdminOrOwner = user?.role === 'super_admin' || user?.role === 'company_admin';
+    const activeCompany = companies.find(company => String(company.id) === String(companyId));
+    const navigation = [
+        ['dashboard', `⚡ ${t('liveSolar')}`, Zap],
+        can('enter_readings') && ['entry', t('dailyEntry'), ClipboardPlus],
+        can('view_reports') && ['reports', t('reports'), BarChart3],
+        ['gallery', t('gallery'), Camera],
+        ['reels', t('reels'), Film],
+        (isAdminOrOwner || can('view_expenses')) && ['expenses', t('expenses'), IndianRupee],
+        user.role === 'super_admin' && ['companies', t('companies'), Building2],
+        /* Hidden as requested: user.role === 'super_admin' && ['isolarcloud', 'iSolarCloud', CloudSun], */
+        (user.role === 'super_admin' || can('manage_company_users')) && ['users', t('users'), Users],
+        (user.role === 'super_admin' || can('manage_company_users')) && ['activity', t('activityLog'), Activity],
+        can('view_employees') && ['employees', t('employees'), Users],
+        can('view_attendance') && ['attendance', t('attendance'), UserCheck],
+        can('view_attendance') && ['leave-holidays', t('leaveHoliday'), CalendarCheck2],
+        can('view_attendance_reports') && ['attendance-reports', t('attendanceReports'), BarChart3],
+        isAdminOrOwner && ['salaries', t('salaries'), WalletCards],
+        (isAdminOrOwner || can('view_stock') || can('manage_stock')) && ['stock', t('stock'), Boxes],
+        (isAdminOrOwner || can('enter_readings') || can('view_reports')) && ['curtailment-loss', t('curtailmentLoss', '૬૬KV પાવર કટ & નુકસાન'), Zap],
+        /* Hidden as requested: user.role === 'super_admin' && ['ai-help-center', '🤖 AI Help Center', Sparkles], */
+        user.role === 'employee' && ['my-attendance', t('myAttendance'), Clock3],
+        user.role === 'employee' && ['my-salary', t('mySalary'), IndianRupee],
+    ].filter(Boolean);
+    const titles = {
+        dashboard: ['Live Solar Generation & Real-Time Flow', companyId === 'all' ? 'All Companies Live Sync' : activeCompany?.name],
+        entry: ['Daily reading entry', activeCompany?.name || 'All Plants Daily Entry'],
+        reports: ['Reports', companyId === 'all' ? 'All companies combined' : activeCompany?.name],
+        gallery: ['Plant Photo Gallery', 'Daily scheduled inspection records and photo log'],
+        reels: ['Plant Solar Reels', 'Cinematic video hub with auto slow-mo, trending beats & Instagram share'],
+        expenses: ['Shared expenses', 'Company-wise balances and settlements'],
+        companies: ['Company configuration', 'Multipliers and inverters'],
+        isolarcloud: ['iSolarCloud Live Integration', 'Sungrow OAuth 2.0 Connection & Real-Time Sync'],
+        users: ['Users & access', 'Roles and custom permissions'],
+        activity: ['Activity log', 'Track important changes'],
+        import: ['Excel data import', 'Import legacy daily readings'],
+        employees: ['Common employees', 'Shared across all companies'],
+        attendance: ['Employee attendance', 'Common daily attendance register'],
+        'leave-holidays': ['Leave & holidays', 'Common approvals and calendar'],
+        'attendance-reports': ['Attendance reports', 'Monthly attendance and work summary'],
+        salaries: ['Monthly salary', 'Confidential payroll calculation and adjustments'],
+        stock: ['Stock management', 'Common inventory and borrowing register'],
+        'curtailment-loss': [t('gridPowerTripTitle', '૬૬KV સબસ્ટેશન પાવર કટ & નુકસાન'), t('gridPowerTripSubtitle', 'બપોરે પાવર બંધ રહેવાથી કઈ કંપનીને કેટલા યુનિટ્સ અને રૂપિયાનું નુકસાન થયું તેનો હિસાબ')],
+        'ai-help-center': ['🤖 Antigravity AI Help Center & Auto-Coder', '24×7 Auto-Doctor, Multi-Screenshot Debugger, Cloud Git Push & cPanel Auto-Deploy'],
+        'my-attendance': ['My attendance', 'Time in, time out and leave'],
+        'my-salary': ['My salary', 'Private salary statements and attendance details'],
+    };
+    const navigationKey = navigation.map(([key]) => key).join('|');
+
+    useEffect(() => {
+        if (navigation.some(([key]) => key === page)) return;
+        const fallback = user.role === 'employee'
+            ? navigation.find(([key]) => key === 'my-attendance')
+            : navigation[0];
+        if (fallback) setPage(fallback[0]);
+    }, [navigationKey, page, setPage, user.role]);
+
+    const choosePage = key => {
+        setPage(key);
+        setMenuOpen(false);
+    };
+
+    const handleFinishSplash = () => {
+        try {
+            sessionStorage.setItem('solarflow_splash_shown', 'true');
+        } catch (e) {}
+        setShowSplash(false);
+    };
+
+    return (
+        <>
+            {showSplash && (
+                <AppSplashScreen
+                    user={user}
+                    activeCompany={activeCompany}
+                    liveData={liveSolarData}
+                    onFinish={handleFinishSplash}
+                />
+            )}
+
+            <MilestoneCelebrationModal
+                user={user}
+                activeCompany={activeCompany}
+                liveData={liveSolarData}
+            />
+
+            {/* 📱 If on Mobile Screen or Standalone APK View: Render MobileAppView */}
+            {isMobile ? (
+                <MobileAppView
+                    user={user}
+                    page={page}
+                    setPage={setPage}
+                    companies={companies}
+                    companyId={companyId}
+                    setCompanyId={setCompanyId}
+                    liveData={liveSolarData}
+                    fetchLiveSolar={fetchLiveSolar}
+                >
+                    {children({can, activeCompany})}
+                </MobileAppView>
+            ) : (
+                /* 💻 Desktop Layout */
+                <div className="shell">
+                    <aside className={menuOpen ? 'open' : ''}>
+                        <div className="brand" style={{color: '#ffffff', display: 'flex', alignItems: 'center', gap: '10px', width: 'auto'}}>
+                            <span className="brand-icon"><Sun size={24}/></span>
+                            <div className="brand-text" style={{fontSize: '18px', fontWeight: 800, letterSpacing: '-0.02em', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', width: 'auto', height: 'auto', background: 'transparent'}}>
+                                <span className="brand-solar" style={{color: '#ffffff', whiteSpace: 'nowrap'}}>Solar</span><span className="brand-flow" style={{color: '#4ade80', whiteSpace: 'nowrap'}}>Flow</span>
+                            </div>
+                            <button className="mobile-close" onClick={() => setMenuOpen(false)}><X/></button>
+                        </div>
+                        <div className="account">
+                            <div className="account-avatar" style={{border: activeCompany?.owner_photo_url ? '2px solid #f59e0b' : 'none', overflow: 'hidden'}}>
+                                {activeCompany?.owner_photo_url ? (
+                                    <img src={activeCompany.owner_photo_url} alt="" style={{width: '100%', height: '100%', objectFit: 'cover'}}/>
+                                ) : (
+                                    user.company_id && activeCompany?.logo_url ? <img src={activeCompany.logo_url} alt=""/> : user.name.slice(0, 1).toUpperCase()
+                                )}
+                            </div>
+                            <span>
+                                <b>{user?.name || 'Super Admin'}</b>
+                                <small>{user?.role?.replaceAll('_', ' ')}{activeCompany?.owner_name ? ` (${t('owner')}: ${activeCompany.owner_name})` : ''}</small>
+                            </span>
+                        </div>
+                        <nav>
+                            {navigation.map(([key, label, Icon]) => <button key={key} data-page={key} className={page === key ? 'nav active' : 'nav'} onClick={() => choosePage(key)}><Icon size={18}/><span>{label}</span><ChevronRight size={15}/></button>)}
+                            {isAdminOrOwner && (
+                                <button
+                                    type="button"
+                                    className="nav"
+                                    onClick={() => {
+                                        setMenuOpen(false);
+                                        setShowManageCallsModal(true);
+                                    }}
+                                    style={{ color: '#86efac', fontWeight: 700 }}
+                                >
+                                    <Phone size={18} />
+                                    <span>{currentLang === 'en' ? 'Manage AI Calls (ON/OFF)' : '📞 AI કૉલ ON / OFF'}</span>
+                                    <ChevronRight size={15} />
+                                </button>
+                            )}
+                        </nav>
+                        <button className="nav signout" onClick={logout}><LogOut size={18}/><span>Sign out</span></button>
+                    </aside>
+                    {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)}/>} 
+                    <main className="content">
+                        <header className="topbar">
+                            <button className="mobile-menu" onClick={() => setMenuOpen(true)}><Menu/></button>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto'}}>
+                                {/* Manage Auto AI Calls ON/OFF Pill (Admin/Owner Only) */}
+                                {isAdminOrOwner && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowManageCallsModal(true)}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            background: '#f0fdf4',
+                                            padding: '6px 12px',
+                                            borderRadius: '20px',
+                                            border: '1.5px solid #86efac',
+                                            fontSize: '12px',
+                                            fontWeight: 800,
+                                            color: '#15803d',
+                                            cursor: 'pointer'
+                                        }}
+                                        title={currentLang === 'en' ? 'Manage Auto AI Voice Calls (ON/OFF)' : 'ઓટો AI એલર્ટ કૉલ ચાલુ/બંધ કરો'}
+                                    >
+                                        <Phone size={13} style={{color: '#16a34a'}}/>
+                                        <span>{currentLang === 'en' ? 'Manage Calls (ON/OFF)' : '📞 AI કૉલ ON / OFF'}</span>
+                                    </button>
+                                )}
+
+                                {/* Language Switcher Pill */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const nextLang = currentLang === 'gu' ? 'en' : 'gu';
+                                        setLang(nextLang);
+                                    }}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: '#f8fafc',
+                                        padding: '6px 12px',
+                                        borderRadius: '20px',
+                                        border: '1px solid #cbd5e1',
+                                        fontSize: '12px',
+                                        fontWeight: 700,
+                                        color: '#334155',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <Globe size={14} style={{color: '#16a34a'}}/>
+                                    <span>{currentLang === 'gu' ? 'ગુજરાતી' : 'English'}</span>
+                                </button>
+
+                                {/* AI Voice Call Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (typeof unlockVoiceCallAudio === 'function') unlockVoiceCallAudio();
+                                        setShowVoiceCall(true);
+                                    }}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '38px',
+                                        height: '38px',
+                                        borderRadius: '50%',
+                                        background: 'linear-gradient(135deg, #16a34a, #15803d)',
+                                        color: '#ffffff',
+                                        border: '1.5px solid rgba(255, 255, 255, 0.4)',
+                                        cursor: 'pointer',
+                                        boxShadow: '0 4px 14px rgba(22, 163, 74, 0.4)',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    title={t('callAi')}
+                                >
+                                    <Phone size={17} className="animate-pulse" />
+                                </button>
+
+                                {((user.role === 'super_admin' && ['dashboard', 'reports', 'activity'].includes(page)) || (!user.company_id && ['dashboard', 'reports', 'activity', 'stock'].includes(page))) && <label className="company-switch"><span>Company</span><select value={companyId} onChange={event => setCompanyId(event.target.value)}><option value="all">All Companies</option>{companies.map(company => <option value={company.id} key={company.id}>{company.name}</option>)}</select></label>}
+                            </div>
+                        </header>
+                        {children({can, activeCompany})}
+                    </main>
+                    <NotificationPermissionModal />
+                </div>
+            )}
+
+            {/* 📞 Manage Auto AI Voice Calls (ON / OFF) Modal */}
+            <ManageAiCallsModal
+                isOpen={showManageCallsModal}
+                onClose={() => setShowManageCallsModal(false)}
+                companies={companies}
+            />
+
+            {/* 🎙️ Real-Time AI Voice Call Modal (Mobile & Desktop) */}
+            {showVoiceCall && (
+                <VoiceCallModal
+                    isOpen={showVoiceCall}
+                    onClose={() => setShowVoiceCall(false)}
+                    user={user}
+                    activeCompany={activeCompany}
+                    liveSolarData={liveSolarData}
+                />
+            )}
+
+            {/* 🚨 AI Incoming Voice Call Fullscreen Modal */}
+            {emergencyCall.isOpen && (
+                <EmergencyIncomingCallModal
+                    isOpen={emergencyCall.isOpen}
+                    onClose={() => setEmergencyCall({ isOpen: false, autoAnswer: false, data: null })}
+                    callData={emergencyCall.data}
+                    autoAnswer={emergencyCall.autoAnswer}
+                    onNavigateLossAnalytics={(targetPage) => {
+                        if (targetPage) {
+                            setPage(targetPage);
+                        } else {
+                            setPage('curtailment-loss');
+                        }
+                    }}
+                />
+            )}
+        </>
+    );
+}

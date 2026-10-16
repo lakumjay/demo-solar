@@ -1,0 +1,129 @@
+{
+    "$schema": "https://www.schemastore.org/package.json",
+    "name": "solarflow",
+    "version": "1.0.0",
+    "description": "Company-wise solar generation and meter reading management",
+    "private": true,
+    "type": "module",
+    "main": "electron/main.cjs",
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite",
+        "lint": "find app routes config -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null && echo '✓ PHP & syntax lint passed'",
+        "test:backend": "php artisan test",
+        "test:e2e": "npx playwright test",
+        "qa": "npm run build && npm run lint && npm run test:backend && npm run test:e2e",
+        "desktop:start": "npm run build && electron .",
+        "desktop:pack": "npm run build && electron-builder --dir",
+        "desktop:build": "npm run build && electron-builder",
+        "mobile:sync": "cap sync",
+        "mobile:doctor": "cap doctor",
+        "mobile:android": "cap open android",
+        "mobile:ios": "cap open ios"
+    },
+    "devDependencies": {
+        "@capacitor/android": "^8.4.3",
+        "@capacitor/cli": "^8.4.3",
+        "@capacitor/ios": "^8.4.3",
+        "@playwright/test": "^1.64.0",
+        "@tailwindcss/vite": "^4.0.0",
+        "@vitejs/plugin-react": "^5.2.0",
+        "axios": "^1.11.0",
+        "concurrently": "^9.0.1",
+        "electron": "^44.4.2",
+        "electron-builder": "^26.15.3",
+        "laravel-vite-plugin": "^2.0.0",
+        "tailwindcss": "^4.0.0",
+        "typescript": "^5.9.3",
+        "vite": "^7.0.7",
+        "wait-on": "^9.1.0"
+    },
+    "dependencies": {
+        "@capacitor/app": "^8.1.2",
+        "@capacitor/core": "^8.4.3",
+        "@capacitor/keyboard": "^8.0.6",
+        "@google/genai": "^2.28.0",
+        "lucide-react": "^1.47.0",
+        "react": "^19.3.0",
+        "react-dom": "^19.3.0",
+        "react-router-dom": "^7.18.4"
+    },
+    "build": {
+        "appId": "com.solarflow.desktop",
+        "productName": "SolarFlow",
+        "asar": true,
+        "files": [
+            "electron/**/*",
+            "package.json"
+        ],
+        "extraResources": [
+            {
+                "from": "app",
+                "to": "laravel/app"
+            },
+            {
+                "from": "bootstrap",
+                "to": "laravel/bootstrap"
+            },
+            {
+                "from": "config",
+                "to": "laravel/config"
+            },
+            {
+                "from": "database",
+                "to": "laravel/database"
+            },
+            {
+                "from": "public",
+                "to": "laravel/public"
+            },
+            {
+                "from": "resources/views",
+                "to": "laravel/resources/views"
+            },
+            {
+                "from": "routes",
+                "to": "laravel/routes"
+            },
+            {
+                "from": "vendor",
+                "to": "laravel/vendor"
+            },
+            {
+                "from": "artisan",
+                "to": "laravel/artisan"
+            },
+            {
+                "from": "composer.json",
+                "to": "laravel/composer.json"
+            },
+            {
+                "from": "composer.lock",
+                "to": "laravel/composer.lock"
+            }
+        ],
+        "mac": {
+            "target": [
+                "dmg",
+                "zip"
+            ],
+            "category": "public.app-category.business",
+            "extendInfo": {
+                "NSCameraUsageDescription": "SolarFlow uses the camera for employee clock-in selfies.",
+                "NSLocationWhenInUseUsageDescription": "SolarFlow uses location to verify employee clock-in and clock-out."
+            }
+        },
+        "win": {
+            "target": [
+                "nsis"
+            ]
+        },
+        "linux": {
+            "target": [
+                "AppImage",
+                "deb"
+            ],
+            "category": "Office"
+        }
+    }
+}

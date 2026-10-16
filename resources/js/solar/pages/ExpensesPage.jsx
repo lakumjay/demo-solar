@@ -1,0 +1,1743 @@
+import React, {useEffect, useMemo, useState} from 'react';
+import {ArrowRight, Calendar, CheckCircle2, Clock, FileSpreadsheet, FileText, HandCoins, History, IndianRupee, Layers, LayoutGrid, PencilLine, Plus, ReceiptIndianRupee, RotateCcw, Scale, Search, Sparkles, Split, Table, X, Zap} from 'lucide-react';
+import {api, getApiBaseUrl} from '../api';
+import {Empty, Field, Loading, Metric} from '../components/Common';
+import {monthStart, today} from '../config';
+import {number, indianAmount, shortDate} from '../format';
+import { getLanguage, t } from '../utils/translations';
+import { compressImage } from '../utils/imageCompressor';
+
+export default function ExpensesPage({currentUser}) {
+    const [currentLang, setCurrentLang] = useState(getLanguage());
+
+    useEffect(() => {
+        const handleLangChange = (e) => setCurrentLang(e.detail);
+        window.addEventListener('solarflow_language_change', handleLangChange);
+        return () => window.removeEventListener('solarflow_language_change', handleLangChange);
+    }, []);
+    const [from, setFrom] = useState(monthStart());
+    const [to, setTo] = useState(today());
+    const [selectedCompany, setSelectedCompany] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [searchQuery, setSearchQuery] = useState('');
+    const PAGE_SIZE = 5;
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery]);
+    const [data, setData] = useState(null);
+    const [expenseForm, setExpenseForm] = useState(null);
+    const [settlement, setSettlement] = useState(null);
+    const [message, setMessage] = useState('');
+    const [error, setError] = useState('');
+    const [activeTab, setActiveTab] = useState('ledger'); // 'ledger' or 'settlements'
+    const [ledgerViewMode, setLedgerViewMode] = useState(() => (typeof window !== 'undefined' && window.innerWidth <= 820 ? 'cards' : 'table'));
+
+    const load = async () => {
+        try {
+            const compParam = selectedCompany ? `&company_id=${selectedCompany}` : '';
+            const res = await api(`expenses?date_from=${from}&date_to=${to}${compParam}`);
+            setData(res);
+            if (res.min_date && from < res.min_date) {
+                setFrom(res.min_date);
+            }
+            setError('');
+            setCurrentPage(1);
+        } catch (failure) {
+            setError(failure.message);
+        }
+    };
+
+    useEffect(() => { load(); }, [selectedCompany]);
+
+    const setQuickRange = (start, end) => {
+        setFrom(start);
+        setTo(end);
+    };
+
+    const completed = async success => {
+        setExpenseForm(null);
+        setSettlement(null);
+        setMessage(success);
+        await load();
+    };
+
+    const action = async (entry, name) => {
+        if (!window.confirm(`${name === 'cancel' ? 'Cancel' : 'Reverse'} this expense?`)) return;
+        try {
+            await api(`expenses/${entry.id}/${name}`, {method: 'POST'});
+            await completed(`Expense ${name === 'cancel' ? 'cancelled' : 'reversed'} successfully.`);
+        } catch (failure) {
+            setError(failure.message);
+        }
+    };
+
+    const displayBalances = useMemo(() => {
+        if (!data?.balances) return [];
+        if (!selectedCompany) return data.balances;
+        const cid = Number(selectedCompany);
+        return data.balances.filter(p => p.company_ids?.includes(cid));
+    }, [data?.balances, selectedCompany]);
+
+    const allEntries = useMemo(() => {
+        const list = data?.entries || [];
+        if (!selectedCompany) return list;
+        const cid = Number(selectedCompany);
+        return list.filter(entry => {
+            if (entry.type === 'settlement') {
+                return Number(entry.from_company?.id) === cid || Number(entry.to_company?.id) === cid;
+            }
+            return Number(entry.payer_company?.id) === cid ||
+                (entry.payers || []).some(p => Number(p.company_id) === cid) ||
+                (entry.allocations || []).some(a => Number(a.company?.id) === cid && (Number(a.percentage) > 0 || Number(a.amount) > 0 || Number(a.amount_paid) > 0));
+        });
+    }, [data?.entries, selectedCompany]);
+
+    const filteredEntries = useMemo(() => {
+        if (!searchQuery.trim()) return allEntries;
+        const rawQ = searchQuery.trim().toLowerCase();
+        // Clean query for numeric comparison (remove commas, currency symbols, and spaces)
+        const cleanNumQ = rawQ.replace(/,/g, '').replace(/[₹rs\.]/gi, '').trim();
+        const isNumeric = cleanNumQ.length > 0 && !isNaN(Number(cleanNumQ));
+
+        return allEntries.filter(entry => {
+            // 1. Amount matching (exact, rounded, or formatted with commas)
+            if (isNumeric) {
+                const rawAmt = String(entry.amount || '');
+                const roundAmt = String(Math.round(Number(entry.amount) || 0));
+                if (rawAmt.includes(cleanNumQ) || roundAmt.includes(cleanNumQ)) return true;
+
+                // Formatted amount with Indian commas (e.g. 10,000)
+                const formatted = indianAmount(entry.amount || 0).toLowerCase();
+                if (formatted.includes(rawQ) || formatted.replace(/,/g, '').includes(cleanNumQ)) return true;
+
+                // Multi-payer amounts
+                if ((entry.payers || []).some(p => {
+                    const pRaw = String(p.amount || '');
+                    const pRound = String(Math.round(Number(p.amount) || 0));
+                    return pRaw.includes(cleanNumQ) || pRound.includes(cleanNumQ);
+                })) return true;
+
+                // Allocation amounts
+                if ((entry.allocations || []).some(a => {
+                    const aRaw = String(a.amount || '');
+                    const aRound = String(Math.round(Number(a.amount) || 0));
+                    const aPaidRaw = String(a.amount_paid || '');
+                    return aRaw.includes(cleanNumQ) || aRound.includes(cleanNumQ) || aPaidRaw.includes(cleanNumQ);
+                })) return true;
+            }
+
+            // 2. Text matching across name, description, category, notes, and companies
+            const title = (entry.title || '').toLowerCase();
+            const desc = (entry.description || '').toLowerCase();
+            const notes = (entry.notes || '').toLowerCase();
+            const category = (entry.category || '').toLowerCase();
+            const entryType = (entry.type || '').toLowerCase();
+            const dateStr = (entry.date || '').toLowerCase();
+            const shortDateStr = shortDate(entry.date || '').toLowerCase();
+
+            // Direct company names
+            const payerName = (entry.payer_company?.name || '').toLowerCase();
+            const payerCode = (entry.payer_company?.code || '').toLowerCase();
+            const fromName = (entry.from_company?.name || '').toLowerCase();
+            const toName = (entry.to_company?.name || '').toLowerCase();
+
+            // Multi-payers company names & codes
+            const payersText = (entry.payers || []).map(p => `${p.company?.name || ''} ${p.company?.code || ''}`).join(' ').toLowerCase();
+
+            // Allocation company names & codes
+            const allocsText = (entry.allocations || []).map(a => `${a.company?.name || ''} ${a.company?.code || ''}`).join(' ').toLowerCase();
+
+            return title.includes(rawQ) ||
+                desc.includes(rawQ) ||
+                notes.includes(rawQ) ||
+                category.includes(rawQ) ||
+                entryType.includes(rawQ) ||
+                dateStr.includes(rawQ) ||
+                shortDateStr.includes(rawQ) ||
+                payerName.includes(rawQ) ||
+                payerCode.includes(rawQ) ||
+                fromName.includes(rawQ) ||
+                toName.includes(rawQ) ||
+                payersText.includes(rawQ) ||
+                allocsText.includes(rawQ);
+        });
+    }, [allEntries, searchQuery]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredEntries.length / PAGE_SIZE));
+    const safePage = Math.min(Math.max(1, currentPage), totalPages);
+
+    const paginatedEntries = useMemo(() => {
+        const start = (safePage - 1) * PAGE_SIZE;
+        return filteredEntries.slice(start, start + PAGE_SIZE);
+    }, [filteredEntries, safePage]);
+
+    const groupedEntries = useMemo(() => {
+        return Object.entries(
+            paginatedEntries.reduce((groups, entry) => ({
+                ...groups,
+                [entry.date]: [...(groups[entry.date] || []), entry],
+            }), {})
+        );
+    }, [paginatedEntries]);
+
+    if (!data && !error) return <Loading/>;
+    if (!data) return <Empty title="Could not load expenses" detail={error}/>;
+
+    const summary = data.summary;
+    const settlementsHistory = data.settlements_history || [];
+
+    return (
+        <div className="expenses-page">
+            {currentUser.role === 'super_admin' ? (
+                <div className="cards expense-summary-cards">
+                    <Metric icon={IndianRupee} title="Total outstanding" value={summary.total_outstanding} unit="INR" color="amber"/>
+                    <Metric icon={Scale} title="Open balances" value={summary.open_pairs} unit="company pairs"/>
+                    <Metric icon={CheckCircle2} title="Cleared balances" value={summary.cleared_pairs} unit="company pairs"/>
+                    <Metric icon={ReceiptIndianRupee} title="Period entries" value={summary.entries} unit="ledger entries"/>
+                </div>
+            ) : (
+                <div className="cards expense-summary-cards">
+                    <Metric icon={HandCoins} title="You need to pay" value={summary.payable} unit="INR" color="amber"/>
+                    <Metric icon={IndianRupee} title="You will receive" value={summary.receivable} unit="INR"/>
+                    <Metric icon={Scale} title="Net balance" value={summary.net} unit="INR"/>
+                    <Metric icon={ReceiptIndianRupee} title="Open balances" value={summary.open_pairs} unit="company pairs"/>
+                </div>
+            )}
+
+            {message && <div className="success">{message}</div>}
+            {error && <div className="error">{error}</div>}
+            {!data.settings.configured && (
+                <div className="error">
+                    Shared expense percentages are not configured. Set the active-company total to 100% in Company Configuration.
+                </div>
+            )}
+
+            {/* 🏢 ગુજરાતી કંપની રોકાણ & હિસાબ સારાંશ (Gujarati Investment & Settlement Box) */}
+            {data?.gujarati_summary && (
+                <section className="panel" style={{
+                    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+                    border: '1.5px solid #cbd5e1',
+                    borderRadius: '14px',
+                    padding: '16px 18px',
+                    marginBottom: '16px',
+                    boxShadow: '0 3px 12px rgba(15, 23, 42, 0.05)'
+                }}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px'}}>
+                        <div>
+                            <h2 style={{margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                                <span>📑</span> {currentLang === 'en' ? 'Company Investment & Settlement Summary' : 'કંપની વાઇઝ રોકાણ & લેતી-દેતી હિસાબ (ગુજરાતી સારાંશ)'}
+                            </h2>
+                            <p style={{margin: '3px 0 0', fontSize: '12px', color: '#64748b'}}>
+                                {currentLang === 'en' ? 'Clear summary of total partner contributions and pending receivables/payables.' : 'દરેક ભાગીદાર કંપનીએ અત્યાર સુધીમાં કેટલા રૂપિયા ચૂકવ્યા અને કોની પાસેથી કેટલા લેવાના/આપવાના બાકી છે તેનો ચોખ્ખો હિસાબ.'}
+                            </p>
+                        </div>
+                        <div style={{
+                            background: '#ecfdf5',
+                            border: '1px solid #6ee7b7',
+                            borderRadius: '10px',
+                            padding: '6px 14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'flex-end'
+                        }}>
+                            <span style={{fontSize: '10.5px', fontWeight: 700, color: '#047857'}}>{currentLang === 'en' ? 'Overall Total Shared Expenses Pool' : 'અત્યાર સુધીનો કુલ શેરિંગ ખર્ચ પૂલ'}</span>
+                            <strong style={{fontSize: '18px', fontWeight: 900, color: '#065f46'}}>₹{data.gujarati_summary.total_spent_formatted}</strong>
+                        </div>
+                    </div>
+
+                    {/* 🏢 3-Column / Responsive Company Cards */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                        gap: '12px',
+                        marginBottom: '14px'
+                    }}>
+                        {data.gujarati_summary.companies.map(comp => {
+                            const isReceivable = comp.status_type === 'receivable';
+                            const isPayable = comp.status_type === 'payable';
+                            const themeBg = isReceivable ? '#f0fdf4' : isPayable ? '#fef2f2' : '#f8fafc';
+                            const themeBorder = isReceivable ? '#86efac' : isPayable ? '#fca5a5' : '#cbd5e1';
+                            const badgeColor = isReceivable ? '#15803d' : isPayable ? '#b91c1c' : '#475569';
+                            const badgeBg = isReceivable ? '#dcfce7' : isPayable ? '#fee2e2' : '#e2e8f0';
+
+                            return (
+                                <div key={comp.company_id} style={{
+                                    background: themeBg,
+                                    border: `1.5px solid ${themeBorder}`,
+                                    borderRadius: '12px',
+                                    padding: '12px 14px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px',
+                                    position: 'relative'
+                                }}>
+                                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px'}}>
+                                        <div>
+                                            <b style={{fontSize: '14px', color: '#0f172a'}}>{comp.name}</b>
+                                            <div style={{fontSize: '11px', color: '#64748b'}}>{currentLang === 'en' ? 'Ownership Share:' : 'ભાગીદારી હિસ્સો:'} <b>{comp.percentage}%</b></div>
+                                        </div>
+                                        <span style={{
+                                            fontSize: '10.5px',
+                                            fontWeight: 800,
+                                            background: badgeBg,
+                                            color: badgeColor,
+                                            padding: '3px 8px',
+                                            borderRadius: '6px'
+                                        }}>
+                                            {comp.status_text}
+                                        </span>
+                                    </div>
+
+                                    <div style={{
+                                        background: 'rgba(255,255,255,0.85)',
+                                        borderRadius: '8px',
+                                        padding: '8px 10px',
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr',
+                                        gap: '8px',
+                                        border: '1px solid rgba(0,0,0,0.05)'
+                                    }}>
+                                        <div>
+                                            <div style={{fontSize: '10px', color: '#64748b', fontWeight: 600}}>{currentLang === 'en' ? 'Total Paid by Company:' : 'કુલ કાઢેલ રકમ (આપ્યા):'}</div>
+                                            <div style={{fontSize: '14px', fontWeight: 850, color: '#0f172a'}}>₹{comp.total_paid_formatted}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{fontSize: '10px', color: '#64748b', fontWeight: 600}}>{currentLang === 'en' ? 'Expected Share (%):' : 'ટકાવારી મુજબ હિસ્સો:'}</div>
+                                            <div style={{fontSize: '13px', fontWeight: 750, color: '#475569'}}>₹{comp.fair_share_formatted}</div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{fontSize: '11.5px', color: '#334155', lineHeight: '1.4', marginTop: '2px'}}>
+                                        {isReceivable && (
+                                            <span>🟢 <b>{comp.name}</b> {currentLang === 'en' ? 'has spent more than its share. Receivable from partner companies:' : 'એ પોતાના હિસ્સા કરતાં વધુ ખર્ચ કર્યો હોવાથી બીજી કંપનીઓ પાસેથી'} <b>₹{Math.abs(comp.net_balance).toLocaleString('en-IN', {minimumFractionDigits: 2})} લેવાના બાકી</b> છે.</span>
+                                        )}
+                                        {isPayable && (
+                                            <span>🔴 <b>{comp.name}</b> {currentLang === 'en' ? 'has spent less than its share. Payable to partner companies:' : 'એ પોતાના હિસ્સા કરતાં ઓછો ખર્ચ કર્યો હોવાથી બીજી કંપનીઓને'} <b>₹{Math.abs(comp.net_balance).toLocaleString('en-IN', {minimumFractionDigits: 2})} આપવાના બાકી</b> છે.</span>
+                                        )}
+                                        {comp.status_type === 'settled' && (
+                                            <span>⚪ {currentLang === 'en' ? 'All accounts are fully settled.' : 'બધા હિસાબો સંપૂર્ણ સરભર થયેલા છે.'}</span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* ⚖️ પેન્ડિંગ લેતી-દેતીના વાક્યો (Pending Settlement Statements) */}
+                    {data.gujarati_summary.pending_settlements && data.gujarati_summary.pending_settlements.length > 0 && (
+                        <div style={{
+                            background: '#fffbeb',
+                            border: '1px solid #fde68a',
+                            borderRadius: '10px',
+                            padding: '10px 14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px'
+                        }}>
+                            <b style={{fontSize: '12px', color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px'}}>
+                                <span>📌</span> {currentLang === 'en' ? 'Pending Settlements (Who pays whom):' : 'પેન્ડિંગ ચૂકવણી વિગત (કોણે કોને કેટલા આપવાના છે):'}
+                            </b>
+                            <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
+                                {data.gujarati_summary.pending_settlements.map((ps, idx) => (
+                                    <div key={idx} style={{fontSize: '12px', color: '#78350f', display: 'flex', alignItems: 'center', gap: '6px'}}>
+                                        <span>👉</span>
+                                        <span>{ps.sentence_gu}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </section>
+            )}
+
+            {/* Modern Calendar & Filters Toolbar */}
+            <section className="panel expense-toolbar-card">
+                <div className="calendar-preset-bar">
+                    <span className="calendar-preset-label">
+                        <Calendar size={14} style={{color: '#0f766e'}}/>
+                        <span>{currentLang === 'en' ? 'Date Filter' : 'ખર્ચ સમયગાળો'}:</span>
+                    </span>
+                    {data?.min_date && data?.max_date && (
+                        <button
+                            type="button"
+                            className={`cal-preset-pill ${from === data.min_date && to === data.max_date ? 'active' : ''}`}
+                            onClick={() => { setFrom(data.min_date); setTo(data.max_date); }}
+                        >
+                            <Sparkles size={12}/> {currentLang === 'en' ? 'Full Expense Period' : 'સંપૂર્ણ ખર્ચ સમય'} ({shortDate(data.min_date)} – {shortDate(data.max_date)})
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className={`cal-preset-pill ${from === monthStart() && to === today() ? 'active' : ''}`}
+                        onClick={() => { setFrom(data?.min_date && monthStart() < data.min_date ? data.min_date : monthStart()); setTo(today()); }}
+                    >
+                        {currentLang === 'en' ? 'This Month' : 'આ મહિને'}
+                    </button>
+                </div>
+
+                <div className="expense-toolbar-main">
+                    <div className="date-input-group">
+                        <div className="custom-date-box">
+                            <span className="date-box-lbl">{currentLang === 'en' ? 'From' : 'ક્યારથી'}</span>
+                            <div className="date-field-wrap">
+                                <Calendar size={14} className="date-icon"/>
+                                <input
+                                    type="date"
+                                    min={data?.min_date || '2026-08-01'}
+                                    max={to || data?.max_date || today()}
+                                    value={from}
+                                    onChange={event => setFrom(event.target.value)}
+                                    className="modern-date-input"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="custom-date-box">
+                            <span className="date-box-lbl">{currentLang === 'en' ? 'To' : 'ક્યાં સુધી'}</span>
+                            <div className="date-field-wrap">
+                                <Calendar size={14} className="date-icon"/>
+                                <input
+                                    type="date"
+                                    min={from || data?.min_date || '2026-08-01'}
+                                    max={data?.max_date || today()}
+                                    value={to}
+                                    onChange={event => setTo(event.target.value)}
+                                    className="modern-date-input"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="custom-date-box company-filter-box">
+                            <span className="date-box-lbl">{currentLang === 'en' ? 'Company' : 'કંપની'}</span>
+                            <select
+                                value={selectedCompany}
+                                onChange={event => {
+                                    setSelectedCompany(event.target.value);
+                                    setCurrentPage(1);
+                                }}
+                                className="modern-company-select"
+                            >
+                                <option value="">{currentLang === 'en' ? 'All Companies' : 'બધી કંપનીઓ (All)'}</option>
+                                {(data.settings.companies || []).map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <button className="primary apply-filter-btn" onClick={load}>
+                            {currentLang === 'en' ? 'Apply' : 'લાગુ કરો'}
+                        </button>
+                    </div>
+
+                    <div className="expense-toolbar-actions">
+                        <a className="secondary export-btn" href={`${getApiBaseUrl().base}expenses/export/excel?date_from=${from}&date_to=${to}${selectedCompany ? `&company_id=${selectedCompany}` : ''}`}>
+                            <FileSpreadsheet size={15}/>
+                            <span>Excel</span>
+                        </a>
+                        <a className="secondary export-btn pdf-btn" href={`${getApiBaseUrl().base}expenses/export/pdf?date_from=${from}&date_to=${to}${selectedCompany ? `&company_id=${selectedCompany}` : ''}`} target="_blank" rel="noreferrer">
+                            <FileText size={15}/>
+                            <span>{currentLang === 'en' ? 'PDF Report' : 'પીડીએફ'}</span>
+                        </a>
+                        {data.can_manage && (
+                            <button className="primary add-exp-btn" disabled={!data.settings.configured} onClick={() => setExpenseForm({})}>
+                                <Plus size={15}/> <span>Add expense</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </section>
+
+            {/* Company Balances Panel */}
+            <section className="panel">
+                <div className="panel-head">
+                    <div>
+                        <h2>Company balances & Outstanding</h2>
+                        <p>Purchases and multi-payer splits are netted automatically. Partial settlements reduce the open balance.</p>
+                    </div>
+                </div>
+                {displayBalances.length ? (
+                    <div className="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Companies</th>
+                                    <th>Current position</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    {data.can_manage && <th/>}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {displayBalances.map(pair => (
+                                    <tr key={pair.key}>
+                                        <td className="strong">{pair.first_company.name} ↔ {pair.second_company.name}</td>
+                                        <td>
+                                            {pair.status === 'cleared'
+                                                ? (currentLang === 'en' ? 'No amount pending (Settled)' : 'No amount pending (સરભર)')
+                                                : <span><b>{pair.debtor_company.name}</b> pays <b>{pair.creditor_company.name}</b></span>}
+                                        </td>
+                                        <td className="strong" style={{color: pair.status === 'cleared' ? '#64748b' : '#b91c1c'}}>
+                                            ₹{number(pair.amount)}
+                                        </td>
+                                        <td>
+                                            <i className={`status ${pair.status === 'cleared' ? 'on' : 'warning'}`}>
+                                                {pair.status === 'cleared' ? 'Cleared' : 'Open Balance'}
+                                            </i>
+                                        </td>
+                                        {data.can_manage && (
+                                            <td>
+                                                {pair.status === 'open' && (
+                                                    <button className="primary" style={{padding: '5px 12px', fontSize: '12px'}} onClick={() => setSettlement(pair)}>
+                                                        <HandCoins size={14}/> Settle / Pay
+                                                    </button>
+                                                )}
+                                            </td>
+                                        )}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <Empty title="No company balances yet" detail="Add the first shared expense to start the ledger."/>
+                )}
+            </section>
+
+            {/* Tabs for Daily Ledger & Settlement Audit History */}
+            <div className="segment" style={{marginBottom: '14px'}}>
+                <button
+                    type="button"
+                    className={activeTab === 'ledger' ? 'active' : ''}
+                    onClick={() => setActiveTab('ledger')}
+                >
+                    <ReceiptIndianRupee size={15}/> Daily expense ledger ({data.entries?.length || 0})
+                </button>
+                <button
+                    type="button"
+                    className={activeTab === 'settlements' ? 'active' : ''}
+                    onClick={() => setActiveTab('settlements')}
+                >
+                    <History size={15}/> Settlement History & Logs ({settlementsHistory.length})
+                </button>
+            </div>
+
+            {/* TAB 1: Daily Expense Ledger */}
+            {activeTab === 'ledger' && (
+                <section className="panel">
+                    <div className="panel-head" style={{alignItems: 'center', marginBottom: '14px'}}>
+                        <div>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'}}>
+                                <h2 style={{margin: 0}}>Daily expense ledger</h2>
+                                {searchQuery.trim() && (
+                                    <span style={{
+                                        fontSize: '11px',
+                                        fontWeight: 700,
+                                        padding: '2px 8px',
+                                        borderRadius: '12px',
+                                        background: filteredEntries.length > 0 ? '#e0f2fe' : '#fee2e2',
+                                        color: filteredEntries.length > 0 ? '#0369a1' : '#b91c1c'
+                                    }}>
+                                        {filteredEntries.length} {currentLang === 'en' ? 'found' : 'પરિણામ'}
+                                    </span>
+                                )}
+                            </div>
+                            <p style={{margin: '4px 0 0'}}>Expenses, multi-payer allocations, reversals, and settlement payments from {shortDate(from)} to {shortDate(to)}.</p>
+                        </div>
+                    </div>
+
+                    {/* 🔍 Search & Controls Toolbar (Responsive for Mobile & Desktop) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '10px',
+                        marginBottom: '16px',
+                        flexWrap: 'wrap'
+                    }}>
+                        {/* 🔍 Auto-Search Input Box (Flex layout prevents icon/text overlap) */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            flex: '1 1 240px',
+                            minWidth: '200px',
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            borderRadius: '8px',
+                            padding: '6px 10px',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                            transition: 'border-color 0.15s ease'
+                        }}>
+                            <Search size={15} style={{color: '#64748b', flexShrink: 0}}/>
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                placeholder={currentLang === 'en' ? 'Search name, company, amount (e.g. 10,000)...' : 'નામ, કંપની, રકમ (દા.ત. 10,000) શોધો...'}
+                                style={{
+                                    flex: 1,
+                                    minWidth: 0,
+                                    border: 'none',
+                                    outline: 'none',
+                                    background: 'transparent',
+                                    padding: '0 2px',
+                                    margin: 0,
+                                    fontSize: '12.5px',
+                                    color: '#0f172a',
+                                    boxShadow: 'none'
+                                }}
+                            />
+                            {searchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchQuery('')}
+                                    title="Clear search"
+                                    style={{
+                                        border: 'none',
+                                        background: 'transparent',
+                                        padding: '2px 4px',
+                                        cursor: 'pointer',
+                                        color: '#94a3b8',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        flexShrink: 0
+                                    }}
+                                >
+                                    <X size={14}/>
+                                </button>
+                            )}
+                        </div>
+
+                        {/* View Mode Toggle Button */}
+                        <button
+                            type="button"
+                            className="secondary view-toggle-btn"
+                            onClick={() => setLedgerViewMode(v => v === 'cards' ? 'table' : 'cards')}
+                            style={{fontSize: '11px', padding: '6px 11px', height: '34px', flexShrink: 0}}
+                            title="Toggle between Card view and Table view"
+                        >
+                            {ledgerViewMode === 'cards' ? <Table size={14}/> : <LayoutGrid size={14}/>}
+                            <span>{ledgerViewMode === 'cards' ? 'Table View' : 'Card View'}</span>
+                        </button>
+                    </div>
+                    {groupedEntries.length ? (
+                        <>
+                            <div className="expense-ledger">
+                                {groupedEntries.map(([date, entries]) => (
+                                    <div className="expense-day" key={date}>
+                                        <h3>{shortDate(date)}</h3>
+                                        {ledgerViewMode === 'cards' ? (
+                                            <div className="expense-cards-grid">
+                                                {entries.map(entry => (
+                                                    <ExpenseCard
+                                                        entry={entry}
+                                                        canManage={data.can_manage}
+                                                        currentLang={currentLang}
+                                                        onEdit={() => setExpenseForm(entry)}
+                                                        onCancel={() => action(entry, 'cancel')}
+                                                        onReverse={() => action(entry, 'reverse')}
+                                                        key={`${entry.type}-${entry.id}`}
+                                                    />
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="table-wrap">
+                                                <table>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Entry & Scope</th>
+                                                            <th>Company split & Payer(s)</th>
+                                                            <th>Amount</th>
+                                                            <th>Status</th>
+                                                            <th/>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {entries.map(entry => (
+                                                            <LedgerRow
+                                                                entry={entry}
+                                                                canManage={data.can_manage}
+                                                                currentLang={currentLang}
+                                                                onEdit={() => setExpenseForm(entry)}
+                                                                onCancel={() => action(entry, 'cancel')}
+                                                                onReverse={() => action(entry, 'reverse')}
+                                                                key={`${entry.type}-${entry.id}`}
+                                                            />
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                            {totalPages > 1 && (
+                                <div className="expense-pagination-bar">
+                                    <div className="pagination-info">
+                                        {currentLang === 'en'
+                                            ? `Showing ${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, filteredEntries.length)} of ${filteredEntries.length} entries`
+                                            : `${filteredEntries.length} માંથી ${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, filteredEntries.length)} એન્ટ્રી`}
+                                    </div>
+                                    <div className="pagination-pages">
+                                        <button
+                                            type="button"
+                                            className="pagination-nav-btn"
+                                            disabled={safePage <= 1}
+                                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        >
+                                            ‹ Prev
+                                        </button>
+                                        {Array.from({length: totalPages}, (_, i) => i + 1).map(pageNum => (
+                                            <button
+                                                key={pageNum}
+                                                type="button"
+                                                className={`pagination-tab-btn ${safePage === pageNum ? 'active' : ''}`}
+                                                onClick={() => setCurrentPage(pageNum)}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        ))}
+                                        <button
+                                            type="button"
+                                            className="pagination-nav-btn"
+                                            disabled={safePage >= totalPages}
+                                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        >
+                                            Next ›
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <div style={{padding: '24px 16px', textAlign: 'center'}}>
+                            <Empty
+                                title={searchQuery ? (currentLang === 'en' ? "No matching entries found" : "કોઈ મેળ ખાતી એન્ટ્રી મળી નથી") : "No expense entries"}
+                                detail={searchQuery ? (currentLang === 'en' ? `No expenses or settlements match "${searchQuery}". Try a different name or amount.` : `"${searchQuery}" માટે કોઈ ખર્ચ કે હિસાબ મળ્યો નથી. કૃપા કરીને નામ અથવા રકમ બદલીને પ્રયાસ કરો.`) : "No expenses or settlements were recorded in this date range."}
+                            />
+                            {searchQuery && (
+                                <button
+                                    type="button"
+                                    className="secondary"
+                                    onClick={() => setSearchQuery('')}
+                                    style={{marginTop: '12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px'}}
+                                >
+                                    <RotateCcw size={13}/> {currentLang === 'en' ? 'Clear search' : 'શોધ સાફ કરો (Clear Search)'}
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </section>
+            )}
+
+            {/* TAB 2: Settlement Audit History Log */}
+            {activeTab === 'settlements' && (
+                <section className="panel">
+                    <div className="panel-head">
+                        <div>
+                            <h2>Settlement History & Payment Log</h2>
+                            <p>Complete record of full and partial payments between companies with date, time, and remaining balances.</p>
+                        </div>
+                    </div>
+                    {settlementsHistory.length ? (
+                        <div className="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Date & Time</th>
+                                        <th>Transfer (From ➜ To)</th>
+                                        <th>Settled Amount</th>
+                                        <th>Type</th>
+                                        <th>Remaining Balance</th>
+                                        <th>Mode & Notes</th>
+                                        <th>Recorded by</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {settlementsHistory.map(item => (
+                                        <tr key={item.id}>
+                                            <td>
+                                                <b>{shortDate(item.date)}</b>
+                                                <small style={{display: 'block', color: '#64748b', fontSize: '11px'}}>{item.settled_at}</small>
+                                            </td>
+                                            <td>
+                                                <span style={{display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600}}>
+                                                    <span>{item.from_company?.name}</span>
+                                                    <ArrowRight size={13} style={{color: '#059669'}}/>
+                                                    <span style={{color: '#059669'}}>{item.to_company?.name}</span>
+                                                </span>
+                                            </td>
+                                            <td className="strong" style={{color: '#059669'}}>
+                                                ₹{number(item.amount)}
+                                            </td>
+                                            <td>
+                                                <span className={`status ${item.settlement_type === 'full' ? 'on' : 'warning'}`}>
+                                                    {item.settlement_type === 'full' ? '100% Full' : 'Partial'}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {item.remaining_balance > 0 ? (
+                                                    <span style={{color: '#b91c1c', fontWeight: 600}}>₹{number(item.remaining_balance)}</span>
+                                                ) : (
+                                                    <span style={{color: '#059669', fontWeight: 600}}>₹0.00 (Cleared)</span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                <span style={{textTransform: 'capitalize', fontSize: '11.5px', color: '#334155'}}>
+                                                    {item.payment_mode?.replace('_', ' ') || 'Bank Transfer'}
+                                                </span>
+                                                {item.notes && <small style={{display: 'block', color: '#64748b'}}>{item.notes}</small>}
+                                            </td>
+                                            <td>
+                                                <small>{item.creator?.name || 'Admin'}</small>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <Empty title="No settlements recorded yet" detail="When companies pay outstanding balances, settlement history will appear here with full timestamps."/>
+                    )}
+                </section>
+            )}
+
+            {/* Modals */}
+            {expenseForm && (
+                <ExpenseForm
+                    entry={expenseForm.id ? expenseForm : null}
+                    settings={data.settings}
+                    currentLang={currentLang}
+                    onClose={() => setExpenseForm(null)}
+                    onSaved={completed}
+                />
+            )}
+
+            {settlement && (
+                <SettlementForm
+                    pair={settlement}
+                    currentLang={currentLang}
+                    onClose={() => setSettlement(null)}
+                    onSaved={completed}
+                />
+            )}
+        </div>
+    );
+}
+
+function ExpenseCard({entry, canManage, onEdit, onCancel, onReverse, currentLang = getLanguage()}) {
+    if (entry.type === 'settlement') {
+        return (
+            <div className="expense-entry-card settlement">
+                <div className="eec-header">
+                    <div>
+                        <b className="eec-title">Settlement payment</b>
+                        <small className="eec-sub">{entry.from_company?.name} ➜ {entry.to_company?.name}</small>
+                    </div>
+                    <div className="eec-amount green">₹{number(entry.amount)}</div>
+                </div>
+                {entry.notes && <div className="eec-notes">{entry.notes}</div>}
+                <div className="eec-footer">
+                    <i className={`status ${entry.status === 'cleared' ? 'on' : 'warning'}`}>
+                        {entry.status === 'cleared' ? 'Full Settlement' : 'Partial Settlement'}
+                    </i>
+                </div>
+            </div>
+        );
+    }
+
+    const scopeBadge = entry.allocation_scope === 'single'
+        ? '1 Company (100% Direct)'
+        : entry.allocation_scope === 'two'
+            ? '2 Companies Split'
+            : 'All Companies (3-Way Master)';
+
+    return (
+        <div className="expense-entry-card">
+            <div className="eec-header">
+                <div>
+                    <b className="eec-title">{entry.description}</b>
+                    <small className="eec-sub">
+                        {entry.purchaser_name} · <span style={{color: '#0284c7', fontWeight: 600}}>{scopeBadge}</span>
+                    </small>
+                </div>
+                <div className="eec-amount">₹{number(entry.amount)}</div>
+            </div>
+
+            {/* Payers & Allocations */}
+            {entry.payers && entry.payers.length > 0 && (
+                <div className="eec-payers">
+                    Paid by: {entry.payers.map(p => `${p.company_name} (₹${number(p.amount_paid)})`).join(', ')}
+                </div>
+            )}
+
+            <div className="eec-allocations-grid">
+                {(entry.allocations || []).filter(row => Number(row.percentage) > 0 || Number(row.amount) > 0 || Number(row.amount_paid) > 0).map(row => {
+                    const net = row.net_effect ?? ((row.amount_paid || 0) - row.amount);
+                    const netText = net > 0.001
+                        ? (currentLang === 'en' ? `+₹${number(net)} Rec` : `+₹${number(net)} લેવાના`)
+                        : net < -0.001
+                            ? (currentLang === 'en' ? `-₹${number(Math.abs(net))} Pay` : `-₹${number(Math.abs(net))} દેવાના`)
+                            : (currentLang === 'en' ? 'Settled' : 'સરભર');
+                    const netColor = net > 0.001 ? '#15803d' : net < -0.001 ? '#b91c1c' : '#64748b';
+
+                    return (
+                        <div key={row.company.id} className="eec-alloc-chip">
+                            <span><b>{row.company.name}</b> {number(row.percentage)}%</span>
+                            <small style={{color: netColor, fontWeight: 700}}>₹{number(row.amount)} ({netText})</small>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {entry.notes && <div className="eec-notes">{entry.notes}</div>}
+
+            <div className="eec-footer">
+                <i className={`status ${entry.status === 'active' ? (entry.locked ? 'warning' : 'on') : entry.status === 'cancelled' ? 'danger' : ''}`}>
+                    {entry.type === 'reversal' ? 'reversal' : entry.status}
+                    {entry.locked && entry.status === 'active' ? ' · locked' : ''}
+                </i>
+                <div className="row-actions">
+                    {entry.receipt_url && (
+                        <a className="link" href={entry.receipt_url} target="_blank" rel="noreferrer">
+                            <FileText size={14}/> Receipt
+                        </a>
+                    )}
+                    {canManage && entry.editable && (
+                        <>
+                            <button className="link" onClick={onEdit}><PencilLine size={14}/> Edit</button>
+                            <button className="link danger-text" onClick={onCancel}>Cancel</button>
+                        </>
+                    )}
+                    {canManage && entry.reversible && (
+                        <button className="link danger-text" onClick={onReverse}>Reverse</button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function LedgerRow({entry, canManage, onEdit, onCancel, onReverse, currentLang = getLanguage()}) {
+    if (entry.type === 'settlement') {
+        return (
+            <tr>
+                <td>
+                    <b>Settlement payment</b>
+                    <small>
+                        {entry.from_company?.name} paid {entry.to_company?.name}
+                        {entry.notes ? ` · ${entry.notes}` : ''}
+                    </small>
+                </td>
+                <td>
+                    <span style={{display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: '#059669'}}>
+                        {entry.from_company?.name} ➜ {entry.to_company?.name}
+                    </span>
+                </td>
+                <td className="strong" style={{color: '#059669'}}>₹{number(entry.amount)}</td>
+                <td>
+                    <i className={`status ${entry.status === 'cleared' ? 'on' : 'warning'}`}>
+                        {entry.status === 'cleared' ? 'Full Settlement' : 'Partial Settlement'}
+                    </i>
+                </td>
+                <td/>
+            </tr>
+        );
+    }
+
+    const scopeBadge = entry.allocation_scope === 'single'
+        ? '1 Company (100% Direct)'
+        : entry.allocation_scope === 'two'
+            ? '2 Companies Split'
+            : 'All Companies (3-Way Master)';
+
+    return (
+        <tr>
+            <td>
+                <b>{entry.description}</b>
+                <small>
+                    {entry.purchaser_name} · <span style={{color: '#0284c7', fontWeight: 600}}>{scopeBadge}</span>
+                    {entry.notes ? ` · ${entry.notes}` : ''}
+                </small>
+            </td>
+            <td>
+                <div className="allocation-list">
+                    {/* Payers summary */}
+                    {entry.payers && entry.payers.length > 0 && (
+                        <div style={{fontSize: '11px', color: '#0f766e', fontWeight: 700, marginBottom: '3px'}}>
+                            Paid by: {entry.payers.map(p => `${p.company_name} (₹${number(p.amount_paid)})`).join(', ')}
+                        </div>
+                    )}
+                    {/* Allocations breakdown */}
+                    {(entry.allocations || []).filter(row => Number(row.percentage) > 0 || Number(row.amount) > 0 || Number(row.amount_paid) > 0).map(row => {
+                        const net = row.net_effect ?? ((row.amount_paid || 0) - row.amount);
+                        const netText = net > 0.001
+                            ? (currentLang === 'en' ? `(+₹${number(net)} Receivable)` : `(+₹${number(net)} લેવાના)`)
+                            : net < -0.001
+                                ? (currentLang === 'en' ? `(-₹${number(Math.abs(net))} Payable)` : `(-₹${number(Math.abs(net))} દેવાના)`)
+                                : (currentLang === 'en' ? '(Settled)' : '(સરભર)');
+                        const netColor = net > 0.001 ? '#15803d' : net < -0.001 ? '#b91c1c' : '#64748b';
+
+                        return (
+                            <span key={row.company.id}>
+                                <b>{row.company.name}</b> {number(row.percentage)}% · {currentLang === 'en' ? 'Expense: ' : 'ખર્ચ: '}₹{number(row.amount)}{' '}
+                                <small style={{color: netColor, fontWeight: 700}}>{netText}</small>
+                            </span>
+                        );
+                    })}
+                </div>
+            </td>
+            <td className="strong">₹{number(entry.amount)}</td>
+            <td>
+                <i className={`status ${entry.status === 'active' ? (entry.locked ? 'warning' : 'on') : entry.status === 'cancelled' ? 'danger' : ''}`}>
+                    {entry.type === 'reversal' ? 'reversal' : entry.status}
+                    {entry.locked && entry.status === 'active' ? ' · locked' : ''}
+                </i>
+            </td>
+            <td>
+                <div className="row-actions">
+                    {entry.receipt_url && (
+                        <a className="link" href={entry.receipt_url} target="_blank" rel="noreferrer">
+                            <FileText size={14}/> Receipt
+                        </a>
+                    )}
+                    {canManage && entry.editable && (
+                        <>
+                            <button className="link" onClick={onEdit}><PencilLine size={14}/> Edit</button>
+                            <button className="link danger-text" onClick={onCancel}>Cancel</button>
+                        </>
+                    )}
+                    {canManage && entry.reversible && (
+                        <button className="link danger-text" onClick={onReverse}>Reverse</button>
+                    )}
+                </div>
+            </td>
+        </tr>
+    );
+}
+
+function ExpenseForm({entry, settings, onClose, onSaved, currentLang = getLanguage()}) {
+    const companies = settings.companies || [];
+
+    // Form fields
+    const [expenseDate, setExpenseDate] = useState(entry?.date || today());
+    const [purchaserName, setPurchaserName] = useState(entry?.purchaser_name || '');
+    const [description, setDescription] = useState(entry?.description || '');
+    const [amount, setAmount] = useState(entry ? String(Math.abs(entry.amount)) : '');
+    const [notes, setNotes] = useState(entry?.notes || '');
+    const [receipt, setReceipt] = useState(null);
+    const [removeReceipt, setRemoveReceipt] = useState(false);
+
+    // Step state: 1=Info, 2=Beneficiary, 3=Payer, 4=Preview/Confirm
+    const [step, setStep] = useState(1);
+    const TOTAL_STEPS = entry ? 3 : 4; // Edit mode has 3 steps (no confirm step shown differently)
+
+    // 1. Allocation Scope
+    const initialScope = entry?.allocation_scope || 'all';
+    const [allocationScope, setAllocationScope] = useState(initialScope);
+    const [selectedBeneficiaries, setSelectedBeneficiaries] = useState(() => {
+        if (entry?.allocations) {
+            return entry.allocations.filter(a => Number(a.percentage) > 0 || Number(a.amount) > 0).map(a => a.company.id);
+        }
+        return companies.map(c => c.id);
+    });
+    const [singleBeneficiaryId, setSingleBeneficiaryId] = useState(() => {
+        if (entry?.allocations) {
+            const single = entry.allocations.find(a => Number(a.percentage) >= 99.9 || Number(a.amount) >= Math.abs(entry.amount));
+            if (single) return String(single.company.id);
+        }
+        return String(companies[0]?.id || '');
+    });
+
+    // 2. Paying Company Mode
+    const [payerMode, setPayerMode] = useState(() => {
+        if (entry?.payers && entry.payers.length > 1) return 'multiple';
+        return 'single';
+    });
+    const [singlePayerId, setSinglePayerId] = useState(String(entry?.payer_company?.id || companies[0]?.id || ''));
+    const [payerAmounts, setPayerAmounts] = useState(() => {
+        const init = {};
+        companies.forEach(c => {
+            const existing = entry?.payers?.find(p => p.company_id === c.id);
+            init[c.id] = existing ? String(existing.amount_paid) : '';
+        });
+        return init;
+    });
+    const [selectedPayers, setSelectedPayers] = useState(() => {
+        if (entry?.payers && entry.payers.length > 0) {
+            return entry.payers.map(p => p.company_id);
+        }
+        return [companies[0]?.id].filter(Boolean);
+    });
+
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+
+    const parsedAmount = Number(amount) || 0;
+
+    const toggleBeneficiary = (cid) => {
+        setSelectedBeneficiaries(prev => {
+            if (prev.includes(cid)) {
+                if (prev.length <= 1) return prev;
+                return prev.filter(id => id !== cid);
+            }
+            if (prev.length >= 2) return [prev[1], cid];
+            return [...prev, cid];
+        });
+    };
+
+    const togglePayer = (cid) => {
+        setSelectedPayers(prev => {
+            if (prev.includes(cid)) {
+                if (prev.length <= 1) return prev;
+                return prev.filter(id => id !== cid);
+            }
+            return [...prev, cid];
+        });
+    };
+
+    const handleSplitEqually = () => {
+        if (!selectedPayers.length || parsedAmount <= 0) return;
+        const count = selectedPayers.length;
+        const splitVal = Number((parsedAmount / count).toFixed(2));
+        setPayerAmounts(prev => {
+            const next = {...prev};
+            let runningSum = 0;
+            selectedPayers.forEach((cid, idx) => {
+                if (idx === count - 1) {
+                    next[cid] = String(Number((parsedAmount - runningSum).toFixed(2)));
+                } else {
+                    next[cid] = String(splitVal);
+                    runningSum += splitVal;
+                }
+            });
+            return next;
+        });
+    };
+
+    const previewAllocations = useMemo(() => {
+        if (allocationScope === 'single') {
+            const targetId = Number(singleBeneficiaryId);
+            return companies.map(c => ({
+                id: c.id, name: c.name,
+                percentage: c.id === targetId ? 100 : 0,
+                shareAmount: c.id === targetId ? parsedAmount : 0,
+            }));
+        }
+        if (allocationScope === 'two') {
+            const activeSel = companies.filter(c => selectedBeneficiaries.slice(0, 2).includes(c.id));
+            const sumMaster = activeSel.reduce((s, c) => s + (Number(c.percentage) || 0), 0);
+            return companies.map(c => {
+                if (!activeSel.some(a => a.id === c.id)) return {id: c.id, name: c.name, percentage: 0, shareAmount: 0};
+                const pct = sumMaster > 0 ? ((Number(c.percentage) || 0) / sumMaster) * 100 : 50;
+                return {id: c.id, name: c.name, percentage: Number(pct.toFixed(2)), shareAmount: Number((parsedAmount * (pct / 100)).toFixed(2))};
+            });
+        }
+        return companies.map(c => {
+            const pct = Number(c.percentage) || 0;
+            return {id: c.id, name: c.name, percentage: pct, shareAmount: Number((parsedAmount * (pct / 100)).toFixed(2))};
+        });
+    }, [allocationScope, selectedBeneficiaries, singleBeneficiaryId, companies, parsedAmount]);
+
+    const previewPaidMap = useMemo(() => {
+        const map = {};
+        if (payerMode === 'single') {
+            const pid = Number(singlePayerId);
+            companies.forEach(c => { map[c.id] = c.id === pid ? parsedAmount : 0; });
+        } else {
+            companies.forEach(c => {
+                map[c.id] = selectedPayers.includes(c.id) ? Number(payerAmounts[c.id]) || 0 : 0;
+            });
+        }
+        return map;
+    }, [payerMode, singlePayerId, payerAmounts, selectedPayers, companies, parsedAmount]);
+
+    const totalPaidSum = Object.values(previewPaidMap).reduce((s, v) => s + v, 0);
+    const paidDiff = Number((parsedAmount - totalPaidSum).toFixed(2));
+    const isPaidValid = Math.abs(paidDiff) <= 0.01;
+
+    // Step validation
+    const step1Valid = expenseDate && purchaserName.trim() && description.trim() && parsedAmount > 0;
+    const step3Valid = payerMode === 'single' ? true : isPaidValid;
+
+    const scopeLabel = allocationScope === 'single' ? (currentLang === 'en' ? '1 Company (100% Direct)' : '૧ કંપની (100% Direct)')
+        : allocationScope === 'two' ? (currentLang === 'en' ? '2 Companies' : '૨ કંપનીઓ (2 Companies)')
+        : (currentLang === 'en' ? 'All 3 Companies (Master %)' : 'ત્રણેય કંપનીઓ (All 3 Master %)');
+
+    const payerLabel = payerMode === 'single'
+        ? companies.find(c => String(c.id) === String(singlePayerId))?.name || '—'
+        : (currentLang === 'en' ? `${selectedPayers.length} Companies` : `${selectedPayers.length} કંપનીઓ`);
+
+    const save = async event => {
+        event.preventDefault();
+        if (!isPaidValid && payerMode === 'multiple') {
+            setError(`Total paid (₹${number(totalPaidSum)}) ≠ Total amount (₹${number(parsedAmount)})`);
+            return;
+        }
+        setBusy(true);
+        setError('');
+
+        const payload = new FormData();
+        payload.append('expense_date', expenseDate);
+        payload.append('purchaser_name', purchaserName);
+        payload.append('description', description);
+        payload.append('amount', String(parsedAmount));
+        payload.append('notes', notes);
+        payload.append('allocation_scope', allocationScope);
+
+        if (allocationScope === 'single') {
+            payload.append('beneficiary_company_ids[]', singleBeneficiaryId);
+        } else if (allocationScope === 'two') {
+            selectedBeneficiaries.slice(0, 2).forEach(id => payload.append('beneficiary_company_ids[]', String(id)));
+        } else {
+            companies.forEach(c => payload.append('beneficiary_company_ids[]', String(c.id)));
+        }
+
+        if (payerMode === 'single') {
+            payload.append('payer_company_id', singlePayerId);
+        } else {
+            selectedPayers.forEach((cid, index) => {
+                payload.append(`payers[${index}][company_id]`, String(cid));
+                payload.append(`payers[${index}][amount_paid]`, String(previewPaidMap[cid] || 0));
+            });
+        }
+
+        if (receipt) payload.append('receipt', receipt);
+        if (removeReceipt) payload.append('remove_receipt', '1');
+
+        try {
+            await api(entry ? `expenses/${entry.id}` : 'expenses', {method: 'POST', body: payload});
+            await onSaved(entry ? 'Expense updated successfully.' : 'Shared expense added successfully.');
+        } catch (failure) {
+            setError(failure.message);
+            setStep(1);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const amountWord = indianAmount(parsedAmount);
+
+    return (
+        <div className="modal-backdrop" onClick={onClose}>
+            <form className="modal expense-modal expense-modal-sheet" onSubmit={save} onClick={e => e.stopPropagation()}>
+                <div className="mobile-modal-handle-bar"/>
+
+                {/* Header */}
+                <div className="panel-head expense-sheet-head">
+                    <div>
+                        <h2>{entry ? (currentLang === 'en' ? 'Edit Shared Expense' : 'Edit Shared Expense (શેર્ડ ખર્ચ)') : (currentLang === 'en' ? 'Add Shared Expense' : 'Add Shared Expense (શેર્ડ ખર્ચ)')}</h2>
+                        <p>{currentLang === 'en' ? 'Shared expense entry and settlement management across partner companies' : 'કંપનીઓ વચ્ચે ભાગીદારી ખર્ચ અને ચૂકવણીની સરળ એન્ટ્રી'}</p>
+                    </div>
+                    <button type="button" className="icon-button ghost modal-close-chip" onClick={onClose}><X size={18}/></button>
+                </div>
+
+                {/* Step Progress Bar */}
+                <div className="expense-step-progress">
+                    {(currentLang === 'en' ? ['Info', 'Beneficiary', 'Paid By', 'Confirm'] : ['માહિતી', 'ખર્ચ કોનો?', 'ચૂકવ્યા?', 'Confirm']).map((label, i) => (
+                        <div key={i} className={`step-prog-item ${step === i + 1 ? 'active' : step > i + 1 ? 'done' : ''}`}>
+                            <div className="step-prog-circle">{step > i + 1 ? '✓' : i + 1}</div>
+                            <span>{label}</span>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="expense-form-body-scroll">
+
+                    {/* ── STEP 1: Basic Info ── */}
+                    {step === 1 && (
+                        <div className="wizard-step-panel">
+                            <div className="wizard-step-title">
+                                <span className="step-num-badge">1</span>
+                                <b>{currentLang === 'en' ? 'Basic Expense Details' : 'ખર્ચની મૂળ માહિતી'}</b>
+                            </div>
+
+                            <Field label={currentLang === 'en' ? 'Expense Date' : 'Expense Date (ખર્ચની તારીખ)'}>
+                                <input type="date" max={today()} value={expenseDate} onChange={e => setExpenseDate(e.target.value)} required/>
+                            </Field>
+
+                            <Field label={currentLang === 'en' ? 'Total Amount (₹)' : 'Total Amount (કુલ રકમ ₹)'}>
+                                <input
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    inputMode="decimal"
+                                    value={amount}
+                                    onChange={e => setAmount(e.target.value)}
+                                    className="highlight-amount-input"
+                                    required
+                                />
+                                {amountWord && (
+                                    <div className="amount-gujarati-word">
+                                        ₹ {Number(parsedAmount).toLocaleString('en-IN')} · <b>{amountWord}</b>
+                                    </div>
+                                )}
+                            </Field>
+
+                            <Field label={currentLang === 'en' ? 'Purchased By' : 'Purchased By (ખર્ચ કરનારનું નામ)'}>
+                                <input value={purchaserName} maxLength="150" onChange={e => setPurchaserName(e.target.value)} required/>
+                            </Field>
+
+                            <Field label={currentLang === 'en' ? 'Description' : 'Description (ખર્ચની વિગત)'}>
+                                <input value={description} maxLength="255" onChange={e => setDescription(e.target.value)} required/>
+                            </Field>
+
+                            <Field label={currentLang === 'en' ? 'Notes / Remarks' : 'Notes (નોંધ / Remarks)'}>
+                                <input value={notes} onChange={e => setNotes(e.target.value)}/>
+                            </Field>
+
+                            <Field label={currentLang === 'en' ? 'Receipt Upload' : 'Receipt upload (બિલની રસીદ)'}>
+                                <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={async e => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                        const compressed = await compressImage(file);
+                                        setReceipt(compressed);
+                                    } else {
+                                        setReceipt(null);
+                                    }
+                                }}/>
+                            </Field>
+
+                            {entry?.receipt_url && (
+                                <label className="toggle" style={{marginTop: '4px'}}>
+                                    <input type="checkbox" checked={removeReceipt} onChange={e => setRemoveReceipt(e.target.checked)}/>
+                                    <span/> Remove existing receipt
+                                </label>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── STEP 2: Beneficiary Scope ── */}
+                    {step === 2 && (
+                        <div className="wizard-step-panel">
+                            <div className="wizard-step-title">
+                                <span className="step-num-badge">2</span>
+                                <b>{currentLang === 'en' ? 'Beneficiary Scope' : 'ખર્ચ કોના માટે થયો છે? (Beneficiary Scope)'}</b>
+                            </div>
+
+                            <div className="scope-pills-row">
+                                <label className={`scope-pill-btn ${allocationScope === 'all' ? 'active' : ''}`}>
+                                    <input type="radio" name="alloc_scope" checked={allocationScope === 'all'} onChange={() => setAllocationScope('all')}/>
+                                    <span>{currentLang === 'en' ? 'All 3 Companies (Master %)' : 'ત્રણેય કંપનીઓ (All 3 Master %)'}</span>
+                                </label>
+                                <label className={`scope-pill-btn ${allocationScope === 'two' ? 'active' : ''}`}>
+                                    <input type="radio" name="alloc_scope" checked={allocationScope === 'two'} onChange={() => {
+                                        setAllocationScope('two');
+                                        setSelectedBeneficiaries(prev => (prev.length === 2 ? prev : companies.slice(0, 2).map(c => c.id)));
+                                    }}/>
+                                    <span>{currentLang === 'en' ? '2 Companies' : '૨ કંપનીઓ (2 Companies)'}</span>
+                                </label>
+                                <label className={`scope-pill-btn ${allocationScope === 'single' ? 'active' : ''}`}>
+                                    <input type="radio" name="alloc_scope" checked={allocationScope === 'single'} onChange={() => setAllocationScope('single')}/>
+                                    <span>{currentLang === 'en' ? '1 Company (100% Direct)' : '૧ કંપની (100% Direct)'}</span>
+                                </label>
+                            </div>
+
+                            {allocationScope === 'two' && (
+                                <div className="scope-sub-panel">
+                                    <span className="sub-panel-label">{currentLang === 'en' ? 'Select any 2 companies:' : 'કોઈપણ ૨ કંપની પસંદ કરો:'}</span>
+                                    <div className="companies-chips-list">
+                                        {companies.map(c => (
+                                            <label key={c.id} className={`company-check-chip ${selectedBeneficiaries.includes(c.id) ? 'checked' : ''}`}>
+                                                <input type="checkbox" checked={selectedBeneficiaries.includes(c.id)} onChange={() => toggleBeneficiary(c.id)}/>
+                                                <span>{c.name}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {allocationScope === 'single' && (
+                                <div className="scope-sub-panel">
+                                    <span className="sub-panel-label">{currentLang === 'en' ? 'Which company incurred this expense?' : 'કઈ કંપનીનો પોતાનો ખર્ચ છે?'}</span>
+                                    <select value={singleBeneficiaryId} onChange={e => setSingleBeneficiaryId(e.target.value)} className="clean-select-box">
+                                        {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                </div>
+                            )}
+
+                            {/* Live share preview */}
+                            <div className="wizard-alloc-preview">
+                                {previewAllocations.filter(r => r.shareAmount > 0).map(r => (
+                                    <div key={r.id} className="wizard-alloc-row">
+                                        <span>{r.name}</span>
+                                        <span>{number(r.percentage)}% · <b>₹{number(r.shareAmount)}</b></span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── STEP 3: Payer ── */}
+                    {step === 3 && (
+                        <div className="wizard-step-panel">
+                            <div className="wizard-step-title">
+                                <span className="step-num-badge green-badge">3</span>
+                                <b>{currentLang === 'en' ? 'Who Paid the Bill?' : 'પૈસા કોણે ચૂકવ્યા? (Who Paid the Bill?)'}</b>
+                            </div>
+
+                            <div className="payer-mode-switch-group">
+                                <label className={`payer-mode-pill ${payerMode === 'single' ? 'active' : ''}`}>
+                                    <input type="radio" name="payer_mode" checked={payerMode === 'single'} onChange={() => setPayerMode('single')}/>
+                                    <span>{currentLang === 'en' ? '1 Company' : '૧ કંપનીએ'}</span>
+                                </label>
+                                <label className={`payer-mode-pill ${payerMode === 'multiple' ? 'active' : ''}`}>
+                                    <input type="radio" name="payer_mode" checked={payerMode === 'multiple'} onChange={() => setPayerMode('multiple')}/>
+                                    <span>{currentLang === 'en' ? 'Two or more companies' : 'બે કે વધુ કંપનીઓએ'}</span>
+                                </label>
+                            </div>
+
+                            {payerMode === 'single' ? (
+                                <div className="single-payer-wrap">
+                                    <span className="sub-panel-label">{currentLang === 'en' ? 'Payer Company:' : 'ચૂકવનાર કંપની:'}</span>
+                                    <select value={singlePayerId} onChange={e => setSinglePayerId(e.target.value)} className="clean-select-box">
+                                        {companies.map(c => <option key={c.id} value={c.id}>{c.name} (100% = ₹{number(parsedAmount)})</option>)}
+                                    </select>
+                                </div>
+                            ) : (
+                                <div className="multiple-payers-wrap">
+                                    <div className="split-action-header">
+                                        <span className="sub-panel-label">{currentLang === 'en' ? 'Enter amount paid by each company:' : 'દરેક કંપનીએ ચૂકવેલ રકમ દાખલ કરો:'}</span>
+                                        <button type="button" onClick={handleSplitEqually} className="quick-split-pill-btn" title="Divide equally">
+                                            <Split size={13}/> <span>⚡ Split Equally</span>
+                                        </button>
+                                    </div>
+                                    <div className="payers-grid-cards">
+                                        {companies.map(c => {
+                                            const isChecked = selectedPayers.includes(c.id);
+                                            return (
+                                                <div key={c.id} className={`payer-input-row-card ${isChecked ? 'active-payer' : ''}`}>
+                                                    <label className="payer-chk-label">
+                                                        <input type="checkbox" checked={isChecked} onChange={() => togglePayer(c.id)}/>
+                                                        <span className="payer-name-text">{c.name}</span>
+                                                    </label>
+                                                    {isChecked && (
+                                                        <div className="payer-amount-input-wrap">
+                                                            <span>₹</span>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                value={payerAmounts[c.id] ?? ''}
+                                                                onChange={e => {
+                                                                    const val = e.target.value;
+                                                                    setPayerAmounts(prev => ({...prev, [c.id]: val}));
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className={`split-validation-status-bar ${isPaidValid ? 'valid-status' : 'invalid-status'}`}>
+                                        <span>{currentLang === 'en' ? 'Total Paid: ' : 'કુલ ચૂકવેલ: '}<b>₹{number(totalPaidSum)}</b> / ₹{number(parsedAmount)}</span>
+                                        <span>
+                                            {isPaidValid ? (currentLang === 'en' ? '✓ Amounts match perfectly' : '✓ રકમ પરફેક્ટ મેચ છે') : paidDiff > 0 ? (currentLang === 'en' ? `Pending ₹${number(paidDiff)} payable` : `બાકી ₹${number(paidDiff)} ચૂકવવાના છે`) : (currentLang === 'en' ? `₹${number(Math.abs(paidDiff))} excess entered` : `₹${number(Math.abs(paidDiff))} વધારે લખાયા છે`)}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── STEP 4: Confirm Preview ── */}
+                    {step === 4 && (
+                        <div className="wizard-step-panel">
+                            <div className="wizard-step-title">
+                                <Sparkles size={15} style={{color: '#d97706'}}/>
+                                <b>{currentLang === 'en' ? 'Confirm & Submit — Review Details' : 'Confirm & Submit — સઘળી વિગત ચકાસો'}</b>
+                            </div>
+
+                            {/* Summary card */}
+                            <div className="confirm-summary-card">
+                                <div className="confirm-summary-row"><span>{currentLang === 'en' ? '📅 Date' : '📅 તારીખ'}</span><b>{expenseDate}</b></div>
+                                <div className="confirm-summary-row highlight-row">
+                                    <span>{currentLang === 'en' ? '💰 Total Amount' : '💰 કુલ રકમ'}</span>
+                                    <div>
+                                        <b style={{fontSize: '18px', color: '#15803d'}}>₹{Number(parsedAmount).toLocaleString('en-IN')}</b>
+                                        {amountWord && <small style={{color: '#16a34a', display: 'block'}}>{amountWord}</small>}
+                                    </div>
+                                </div>
+                                <div className="confirm-summary-row"><span>{currentLang === 'en' ? '👤 Purchaser' : '👤 ખર્ચ કરનાર'}</span><b>{purchaserName}</b></div>
+                                <div className="confirm-summary-row"><span>{currentLang === 'en' ? '📝 Description' : '📝 વિગત'}</span><b>{description}</b></div>
+                                <div className="confirm-summary-row"><span>{currentLang === 'en' ? '🏢 Scope' : '🏢 ખર્ચ Scope'}</span><b>{scopeLabel}</b></div>
+                                <div className="confirm-summary-row"><span>{currentLang === 'en' ? '💳 Paid By' : '💳 ચૂકવ્યા'}</span><b>{payerLabel}</b></div>
+                            </div>
+
+                            {/* Live allocation preview */}
+                            <div className="wizard-step-title" style={{marginTop: '10px'}}>
+                                <span style={{fontSize: '12px', fontWeight: 700, color: '#64748b'}}>{currentLang === 'en' ? '📊 Company-wise Share:' : '📊 Company-wise હિસ્સો:'}</span>
+                            </div>
+                            <div className="preview-alloc-cards-list">
+                                {previewAllocations.filter(row => row.shareAmount > 0 || (previewPaidMap[row.id] || 0) > 0).map(row => {
+                                    const paid = previewPaidMap[row.id] || 0;
+                                    const share = row.shareAmount || 0;
+                                    const net = Number((paid - share).toFixed(2));
+                                    const netText = net > 0.001 ? (currentLang === 'en' ? `+₹${number(net)} (Receivable)` : `+₹${number(net)} (લેવાના)`) : net < -0.001 ? (currentLang === 'en' ? `-₹${number(Math.abs(net))} (Payable)` : `-₹${number(Math.abs(net))} (દેવાના)`) : (currentLang === 'en' ? '₹0.00 (Settled)' : '₹0.00 (સરભર)');
+                                    const netClass = net > 0.001 ? 'net-receivable' : net < -0.001 ? 'net-payable' : 'net-even';
+                                    return (
+                                        <div key={row.id} className="preview-alloc-row-card">
+                                            <div className="alloc-comp-name">
+                                                <b>{row.name}</b>
+                                                <small>({number(row.percentage)}%)</small>
+                                            </div>
+                                            <div className="alloc-amounts-col">
+                                                <span>{currentLang === 'en' ? 'Paid: ' : 'ચૂકવ્યા: '}<b>₹{number(paid)}</b></span>
+                                                <span>{currentLang === 'en' ? 'Share: ' : 'હિસ્સો: '}<b>₹{number(share)}</b></span>
+                                            </div>
+                                            <span className={`net-status-badge ${netClass}`}>{netText}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {error && <div className="error" style={{marginTop: '8px'}}>{error}</div>}
+                        </div>
+                    )}
+
+                    {error && step !== 4 && <div className="error" style={{marginTop: '8px'}}>{error}</div>}
+                </div>
+
+                {/* Sticky Footer Navigation */}
+                <div className="modal-sticky-footer expense-wizard-footer">
+                    {step > 1 ? (
+                        <button type="button" className="secondary modal-cancel-btn" onClick={() => setStep(s => s - 1)}>
+                            ← Back
+                        </button>
+                    ) : (
+                        <button type="button" className="secondary modal-cancel-btn" onClick={onClose}>
+                            {currentLang === 'en' ? 'Cancel' : 'રદ કરો'}
+                        </button>
+                    )}
+
+                    <div className="step-dots">
+                        {[1,2,3,4].map(s => (
+                            <span key={s} className={`step-dot ${step === s ? 'active' : step > s ? 'done' : ''}`}/>
+                        ))}
+                    </div>
+
+                    {step < 4 ? (
+                        <button
+                            type="button"
+                            className="primary expense-submit-btn"
+                            disabled={(step === 1 && !step1Valid) || (step === 2 && allocationScope === 'two' && selectedBeneficiaries.length !== 2) || (step === 3 && payerMode === 'multiple' && !isPaidValid)}
+                            onClick={() => setStep(s => s + 1)}
+                        >
+                            Next →
+                        </button>
+                    ) : (
+                        <button
+                            type="submit"
+                            className="primary expense-submit-btn"
+                            disabled={busy || (payerMode === 'multiple' && !isPaidValid)}
+                        >
+                            {busy ? (currentLang === 'en' ? 'Saving...' : 'સેવ થઈ રહ્યું છે...') : entry ? '✓ Update Expense' : (currentLang === 'en' ? '✓ Save Expense' : '✓ ખર્ચ સેવ કરો')}
+                        </button>
+                    )}
+                </div>
+            </form>
+        </div>
+    );
+}
+
+function SettlementForm({pair, onClose, onSaved, currentLang = getLanguage()}) {
+    const totalOpen = Number(pair.amount) || 0;
+    const [settledOn, setSettledOn] = useState(today());
+    const [amount, setAmount] = useState(String(totalOpen));
+    const [paymentMode, setPaymentMode] = useState('bank_transfer');
+    const [notes, setNotes] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+
+    const parsedAmount = Number(amount) || 0;
+    const remainingBalance = Math.max(0, Number((totalOpen - parsedAmount).toFixed(2)));
+    const settlementType = remainingBalance <= 0.001 ? 'full' : 'partial';
+
+    // Preset Chip Click
+    const handlePreset = (fraction) => {
+        const val = Number((totalOpen * fraction).toFixed(2));
+        setAmount(String(val));
+    };
+
+    const save = async event => {
+        event.preventDefault();
+        setBusy(true);
+        setError('');
+
+        if (parsedAmount <= 0 || parsedAmount > totalOpen) {
+            setError(`Please enter a valid amount between ₹0.01 and ₹${number(totalOpen)}.`);
+            setBusy(false);
+            return;
+        }
+
+        try {
+            await api('expense-settlements', {
+                method: 'POST',
+                body: JSON.stringify({
+                    settled_on: settledOn,
+                    amount: parsedAmount,
+                    from_company_id: pair.debtor_company.id,
+                    to_company_id: pair.creditor_company.id,
+                    settlement_type: settlementType,
+                    payment_mode: paymentMode,
+                    notes,
+                }),
+            });
+            await onSaved(`Settlement of ₹${number(parsedAmount)} recorded successfully.`);
+        } catch (failure) {
+            setError(failure.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div className="modal-backdrop" onClick={onClose}>
+            <form className="modal modal-sheet settlement-modal" onSubmit={save} onClick={e => e.stopPropagation()} style={{maxWidth: '540px'}}>
+                <div className="panel-head">
+                    <div>
+                        <h2>{currentLang === 'en' ? 'Record Balance Settlement' : 'Record balance settlement (ચૂકવણી / સેટલમેન્ટ)'}</h2>
+                        <p>
+                            <b>{pair.debtor_company.name}</b> pays <b>{pair.creditor_company.name}</b>
+                        </p>
+                    </div>
+                    <button type="button" className="icon-button ghost" onClick={onClose}><X size={18}/></button>
+                </div>
+
+                <div className="modal-body-scroll">
+                    <div className="settlement-balance" style={{background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', borderRadius: '12px', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                        <div>
+                            <small style={{fontWeight: 700, textTransform: 'uppercase', fontSize: '10px', color: '#b45309'}}>TOTAL OPEN BALANCE</small>
+                            <div style={{fontSize: '22px', fontWeight: 850, color: '#78350f', letterSpacing: '-0.02em'}}>₹{number(totalOpen)}</div>
+                        </div>
+                        <span className="status warning" style={{fontSize: '11px', padding: '4px 10px', borderRadius: '20px', fontWeight: 750}}>
+                            {currentLang === 'en' ? 'balance receivable' : 'બાકી લેવાના નીકળે છે'}
+                        </span>
+                    </div>
+
+                    {/* Quick Presets (100% Full, 50% Half, 25%) */}
+                    <div style={{marginTop: '2px'}}>
+                        <span style={{fontSize: '11.5px', color: '#475569', fontWeight: 700, display: 'block', marginBottom: '6px'}}>
+                            {currentLang === 'en' ? 'Quick Amount Presets:' : 'ઝડપી રકમ પસંદગી (Quick Amount Presets):'}
+                        </span>
+                        <div style={{display: 'flex', gap: '6px', flexWrap: 'wrap'}}>
+                            <button
+                                type="button"
+                                className="secondary"
+                                onClick={() => handlePreset(1.0)}
+                                style={{
+                                    padding: '6px 12px',
+                                    fontSize: '11.5px',
+                                    fontWeight: 800,
+                                    borderRadius: '8px',
+                                    background: parsedAmount === totalOpen ? '#15803d' : '#f1f5f9',
+                                    color: parsedAmount === totalOpen ? '#ffffff' : '#1e293b',
+                                    border: parsedAmount === totalOpen ? '1px solid #15803d' : '1px solid #e2e8f0',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                100% Full (₹{number(totalOpen)})
+                            </button>
+                            <button
+                                type="button"
+                                className="secondary"
+                                onClick={() => handlePreset(0.5)}
+                                style={{
+                                    padding: '6px 12px',
+                                    fontSize: '11.5px',
+                                    fontWeight: 700,
+                                    borderRadius: '8px',
+                                    background: '#f8fafc',
+                                    border: '1px solid #e2e8f0',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                50% Half (₹{number(totalOpen / 2)})
+                            </button>
+                            <button
+                                type="button"
+                                className="secondary"
+                                onClick={() => handlePreset(0.25)}
+                                style={{
+                                    padding: '6px 12px',
+                                    fontSize: '11.5px',
+                                    fontWeight: 700,
+                                    borderRadius: '8px',
+                                    background: '#f8fafc',
+                                    border: '1px solid #e2e8f0',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                25% (₹{number(totalOpen / 4)})
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="form-grid two">
+                        <Field label={currentLang === 'en' ? 'Payment Date' : 'Payment date (ચૂકવણી તારીખ)'}>
+                            <input type="date" max={today()} value={settledOn} onChange={e => setSettledOn(e.target.value)} required/>
+                        </Field>
+                        <Field label={currentLang === 'en' ? 'Amount to Settle (₹)' : 'Amount to settle (ચૂકવવાની રકમ ₹)'}>
+                            <input
+                                type="number"
+                                min="0.01"
+                                max={totalOpen}
+                                step="0.01"
+                                inputMode="decimal"
+                                value={amount}
+                                onChange={e => setAmount(e.target.value)}
+                                style={{fontSize: '15px', fontWeight: 800, color: '#0f172a'}}
+                                required
+                            />
+                        </Field>
+                    </div>
+
+                    <div className="form-grid two">
+                        <Field label={currentLang === 'en' ? 'Payment Mode' : 'Payment mode (ચૂકવણી પદ્ધતિ)'}>
+                            <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)}>
+                                <option value="bank_transfer">Bank Transfer / NEFT / RTGS</option>
+                                <option value="cash">{currentLang === 'en' ? 'Cash' : 'Cash (રોકડ)'}</option>
+                                <option value="upi">UPI / GPay / PhonePe</option>
+                                <option value="cheque">Cheque</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </Field>
+                        <Field label={currentLang === 'en' ? 'Settlement Status' : 'Settlement status (સેટલમેન્ટ સ્થિતિ)'}>
+                            <input
+                                type="text"
+                                value={settlementType === 'full' ? (currentLang === 'en' ? '100% Full Settlement (Cleared)' : '૧૦૦% Full Settlement (ખાતું ક્લિયર)') : (currentLang === 'en' ? `Partial (Remaining ₹${number(remainingBalance)})` : `Partial (બાકી ₹${number(remainingBalance)})`)}
+                                disabled
+                                style={{fontWeight: 750, color: settlementType === 'full' ? '#15803d' : '#b45309'}}
+                            />
+                        </Field>
+                    </div>
+
+                    <Field label={currentLang === 'en' ? 'Reference / Transaction Notes' : 'Reference / Notes (વિગત / UTR ટ્રાન્ઝેક્શન નંબર)'}>
+                        <textarea rows="2" value={notes} onChange={e => setNotes(e.target.value)}/>
+                    </Field>
+
+                    {/* Remaining Balance Indicator */}
+                    <div style={{background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px'}}>
+                        <span style={{color: '#64748b', fontWeight: 600}}>{currentLang === 'en' ? 'Remaining Balance After Payment:' : 'ચૂકવણી બાદ બાકી રહેતું બેલેન્સ:'}</span>
+                        <b style={{fontSize: '14px', color: remainingBalance > 0 ? '#b91c1c' : '#15803d', fontWeight: 800}}>
+                            {remainingBalance > 0 ? `₹${number(remainingBalance)}` : (currentLang === 'en' ? '₹0.00 (Fully Settled)' : '₹0.00 (સંપૂર્ણ ક્લિયર)')}
+                        </b>
+                    </div>
+
+                    {error && <div className="error">{error}</div>}
+                </div>
+
+                <div className="modal-sticky-footer">
+                    <button type="button" className="secondary modal-cancel-btn" onClick={onClose}>
+                        {currentLang === 'en' ? 'Cancel' : 'Cancel (રદ કરો)'}
+                    </button>
+                    <button className="primary expense-submit-btn" disabled={busy}>
+                        {busy ? (currentLang === 'en' ? 'Saving...' : 'સેવ થઈ રહ્યું છે...') : `✓ Record ${settlementType === 'full' ? 'Full' : 'Partial'} Payment`}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
