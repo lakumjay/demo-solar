@@ -547,7 +547,7 @@ class ISolarCloudService
             21 => 'p98', 22 => 'p99', 23 => 'p100', 24 => 'p101',
         ];
 
-        if (! empty($serialNumbers) && $this->getValidToken()) {
+        if (! config('isolarcloud.demo_mode', true) && ! empty($serialNumbers) && $this->getValidToken()) {
             try {
                 $pointIds = array_merge(['1', '3', '14', '24'], range(70, 85), [92, 93], range(96, 101));
                 $pointIds = array_map('strval', $pointIds);
@@ -558,7 +558,7 @@ class ISolarCloudService
             }
         }
 
-        // Demo Simulation Mode for live showcase & animations
+        // Demo Simulation Mode for live showcase & animations (Instant, Zero Latency)
         if (config('isolarcloud.demo_mode', true) || empty($realtimeData)) {
             $isLive = true;
             $snMap = [];
