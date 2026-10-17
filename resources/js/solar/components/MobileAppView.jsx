@@ -1603,7 +1603,7 @@ export default function MobileAppView({
                                             padding: '2px 8px',
                                             borderRadius: '5px'
                                         }}>
-                                            {dailyReadingStatus.badge}
+                                            {(currentLang === 'en' && dailyReadingStatus.badge_en) ? dailyReadingStatus.badge_en : dailyReadingStatus.badge}
                                         </span>
                                         <b style={{
                                             fontSize: '13px',
@@ -1615,7 +1615,7 @@ export default function MobileAppView({
                                                         ? '#0369a1'
                                                         : '#991b1b'
                                         }}>
-                                            {dailyReadingStatus.title}
+                                            {(currentLang === 'en' && dailyReadingStatus.title_en) ? dailyReadingStatus.title_en : dailyReadingStatus.title}
                                         </b>
                                     </div>
                                     {dailyReadingStatus.status === 'completed' ? (
@@ -1668,7 +1668,7 @@ export default function MobileAppView({
                                                 ? '#075985'
                                                 : '#b91c1c'
                                 }}>
-                                    {dailyReadingStatus.message}
+                                    {(currentLang === 'en' && dailyReadingStatus.message_en) ? dailyReadingStatus.message_en : dailyReadingStatus.message}
                                 </p>
                             </div>
                         )}
@@ -1695,10 +1695,10 @@ export default function MobileAppView({
                                             padding: '2px 7px',
                                             borderRadius: '4px'
                                         }}>
-                                            {pastReadingMissing.badge}
+                                            {(currentLang === 'en' && pastReadingMissing.badge_en) ? pastReadingMissing.badge_en : pastReadingMissing.badge}
                                         </span>
                                         <b style={{fontSize: '12.5px', color: '#991b1b'}}>
-                                            {pastReadingMissing.title}
+                                            {(currentLang === 'en' && pastReadingMissing.title_en) ? pastReadingMissing.title_en : pastReadingMissing.title}
                                         </b>
                                     </div>
                                     <button
@@ -1766,7 +1766,7 @@ export default function MobileAppView({
                                             padding: '2px 7px',
                                             borderRadius: '4px'
                                         }}>
-                                            {fanCleaningStatus.badge}
+                                            {(currentLang === 'en' && fanCleaningStatus.badge_en) ? fanCleaningStatus.badge_en : fanCleaningStatus.badge}
                                         </span>
                                     </div>
                                     <button
@@ -1793,10 +1793,10 @@ export default function MobileAppView({
                                 </div>
                                 <div>
                                     <b style={{fontSize: '12.5px', color: fanCleaningStatus.is_overdue ? '#991b1b' : fanCleaningStatus.is_approaching ? '#92400e' : '#166534', display: 'block', marginBottom: '2px'}}>
-                                        {fanCleaningStatus.title}
+                                        {(currentLang === 'en' && fanCleaningStatus.title_en) ? fanCleaningStatus.title_en : fanCleaningStatus.title}
                                     </b>
                                     <span style={{fontSize: '11px', color: fanCleaningStatus.is_overdue ? '#b91c1c' : fanCleaningStatus.is_approaching ? '#b45309' : '#15803d', lineHeight: 1.4}}>
-                                        {fanCleaningStatus.message} ({currentLang === 'en' ? 'Last cleaned: ' : 'છેલ્લી સફાઈ: '}<b>{fanCleaningStatus.last_cleaned_at}</b>)
+                                        {(currentLang === 'en' && fanCleaningStatus.message_en) ? fanCleaningStatus.message_en : fanCleaningStatus.message} ({currentLang === 'en' ? 'Last cleaned: ' : 'છેલ્લી સફાઈ: '}<b>{fanCleaningStatus.last_cleaned_at}</b>)
                                     </span>
                                 </div>
                             </div>
@@ -1816,14 +1816,14 @@ export default function MobileAppView({
                             }}>
                                 <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
                                     <span style={{background: '#dc2626', color: '#fff', fontSize: '11px', fontWeight: 800, padding: '2px 7px', borderRadius: '4px'}}>
-                                        {gridOutageAlert.badge || (currentLang === 'en' ? '⚡ Grid Supply Trip' : '⚡ ગ્રીડ સપ્લાય ટ્રીપ')}
+                                        {(currentLang === 'en' && gridOutageAlert.badge_en) ? gridOutageAlert.badge_en : (gridOutageAlert.badge || (currentLang === 'en' ? '⚡ Grid Supply Trip' : '⚡ ગ્રીડ સપ્લાય ટ્રીપ'))}
                                     </span>
                                     <b style={{fontSize: '12.5px', color: '#991b1b'}}>
-                                        {gridOutageAlert.title}
+                                        {(currentLang === 'en' && gridOutageAlert.title_en) ? gridOutageAlert.title_en : gridOutageAlert.title}
                                     </b>
                                 </div>
                                 <p style={{margin: 0, fontSize: '11.5px', color: '#b91c1c', lineHeight: 1.4}}>
-                                    {gridOutageAlert.message}
+                                    {(currentLang === 'en' && gridOutageAlert.message_en) ? gridOutageAlert.message_en : gridOutageAlert.message}
                                 </p>
                             </div>
                         )}
@@ -1845,10 +1845,10 @@ export default function MobileAppView({
                                     }}>
                                         <div>
                                             <b style={{fontSize: '12.5px', color: '#9a3412', display: 'block'}}>
-                                                🔔 {cRem.title} ({cRem.company_name})
+                                                🔔 {(currentLang === 'en' && cRem.title_en) ? cRem.title_en : cRem.title} ({cRem.company_name})
                                             </b>
                                             <span style={{fontSize: '11px', color: '#c2410c'}}>
-                                                {cRem.message}
+                                                {(currentLang === 'en' && cRem.message_en) ? cRem.message_en : cRem.message}
                                             </span>
                                         </div>
                                         <button
@@ -1916,7 +1916,9 @@ export default function MobileAppView({
                                         -{data.smart_insights.grid_downtime.lost_units_kwh} kWh (₹{data.smart_insights.grid_downtime.lost_revenue_rs})
                                     </span>
                                 </div>
-                                <p className="grid-downtime-msg">{data.smart_insights.grid_downtime.message}</p>
+                                <p className="grid-downtime-msg">
+                                    {(currentLang === 'en' && data.smart_insights.grid_downtime.message_en) ? data.smart_insights.grid_downtime.message_en : data.smart_insights.grid_downtime.message}
+                                </p>
                             </div>
                         )}
 
@@ -1945,7 +1947,7 @@ export default function MobileAppView({
                                         <div className="underperf-card-head">
                                             <div className="underperf-title">
                                                 <TrendingDown size={14} style={{color: '#dc2626'}}/>
-                                                <b>{uInv.title}</b>
+                                                <b>{(currentLang === 'en' && uInv.title_en) ? uInv.title_en : uInv.title}</b>
                                             </div>
                                             <span className="underperf-loss-chip">
                                                 -{uInv.diff_kwh} kWh (₹{uInv.loss_rs})
@@ -1956,7 +1958,7 @@ export default function MobileAppView({
                                             <span>{currentLang === 'en' ? 'Avg: ' : 'એવરેજ: '}<b>{uInv.benchmark_kwh}</b></span>
                                             <span>{currentLang === 'en' ? 'Lower: ' : 'ઓછું: '}<b style={{color: '#dc2626'}}>-{uInv.diff_pct}%</b></span>
                                         </div>
-                                        <p className="underperf-advice">💡 {uInv.advice}</p>
+                                        <p className="underperf-advice">💡 {(currentLang === 'en' && uInv.advice_en) ? uInv.advice_en : uInv.advice}</p>
                                     </div>
                                 ))}
                             </div>

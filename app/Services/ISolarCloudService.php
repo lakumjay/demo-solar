@@ -1261,7 +1261,9 @@ class ISolarCloudService
                             'diff_pct' => $dropDiffPct,
                             'loss_rs' => $lossRs,
                             'title' => "{$inv['company_name']} - {$inv['name']}: તેની સામાન્ય ક્ષમતા ({$personalBenchmarkKwh} kWh) કરતા ~{$dropDiffKwh} યુનિટ્સ ({$dropDiffPct}%) ઓછા આપે છે",
+                            'title_en' => "{$inv['company_name']} - {$inv['name']}: Generating ~{$dropDiffKwh} kWh ({$dropDiffPct}%) below rated benchmark ({$personalBenchmarkKwh} kWh)",
                             'advice' => 'આ ઇન્વર્ટરના MC4 કનેક્ટર, ડીસી ફ્યુઝ, સ્ટ્રિંગ વોલ્ટેજ અથવા ટ્રીપિંગ તાત્કાલિક સાઈટ પર ચેક કરો.',
+                            'advice_en' => 'Inspect MC4 connectors, DC fuses, string DC voltages or breaker status on site immediately.',
                         ];
                     }
                 }
@@ -1349,7 +1351,9 @@ class ISolarCloudService
             'lost_units_kwh' => $downtimeLostKwh,
             'lost_revenue_rs' => $downtimeLostRs,
             'title' => $isNight ? '🌙 પ્લાન્ટ રાત્રિ સ્લીપ મોડમાં છે' : ($isGridDown ? "🚨 PGVCL 66kV / 11kV લાઈન ટ્રીપ ({$downtimeMinutes} મિનિટ)" : '⚡ ગ્રીડ પાવર સામાન્ય છે'),
+            'title_en' => $isNight ? '🌙 Plant In Night Standby Mode' : ($isGridDown ? "🚨 Grid Supply Trip ({$downtimeMinutes} mins)" : '⚡ Grid Power Normal'),
             'message' => $isNight ? 'રાત્રિના સમયે ગ્રીડ ટ્રીપિંગ કે લોસ લાગુ થતો નથી.' : ($isGridDown ? "પ્લાન્ટ {$downtimeMinutes} મિનિટથી બંધ છે — અંદાજે ~{$downtimeLostKwh} યુનિટ્સ (₹{$downtimeLostRs} નું નુકસાન) થયું છે. 66kV સબસ્ટેશન કે 11kV બ્રેકર તપાસો." : 'પ્લાન્ટ ગ્રીડ સાથે સક્રિય રીતે જોડાયેલો છે.'),
+            'message_en' => $isNight ? 'Grid loss tracking is inactive at night.' : ($isGridDown ? "Plant generation interrupted for {$downtimeMinutes} mins (~{$downtimeLostKwh} kWh / ₹{$downtimeLostRs} loss). Check substation breaker." : 'Plant is actively connected and exporting to the grid.'),
         ];
 
         // ── 4. Cleaning Gain & ROI Tracker ──
@@ -1361,8 +1365,11 @@ class ISolarCloudService
             'active' => $isGridDown,
             'type' => 'grid_outage',
             'badge' => '⚡ PGVCL 66kV / 11kV લાઈન ટ્રીપ',
+            'badge_en' => '⚡ Grid Supply Trip',
             'title' => '🚨 PGVCL 66kV / 11kV લાઈન ટ્રીપ અથવા પ્લાન્ટ બંધ!',
+            'title_en' => '🚨 Substation 66kV Line Trip / Plant Outage!',
             'message' => "દિવસે તડકો હોવા છતાં પ્લાન્ટમાં લાઈવ જનરેશન ૦ kW થઈ ગયું છે. PGVCL 66kV સબસ્ટેશન લાઇન અથવા 11kV બ્રેકર ટ્રીપ થયું હોવાની પૂરી શક્યતા છે. સબસ્ટેશન સ્ટાફનો સંપર્ક કરો.",
+            'message_en' => "Live generation dropped to 0 kW despite daylight. Substation 66kV line or 11kV breaker has tripped. Please verify with substation.",
             'downtime_minutes' => $downtimeMinutes,
             'lost_units_kwh' => $downtimeLostKwh,
             'lost_revenue_rs' => $downtimeLostRs,
@@ -1376,6 +1383,7 @@ class ISolarCloudService
             $mins = max(1, (int) round($startedAt->diffInMinutes($now)));
             if ($mins >= 90 || $currentHourFloat >= 16.5) {
                 $durHuman = $mins < 60 ? "{$mins} મિનિટ" : floor($mins / 60) . " કલાક " . ($mins % 60) . " મિનિટ";
+                $durHumanEn = $mins < 60 ? "{$mins} mins" : floor($mins / 60) . "h " . ($mins % 60) . "m";
                 $curtailmentReminders[] = [
                     'id' => $c->id,
                     'company_id' => $c->company_id,
@@ -1383,8 +1391,11 @@ class ISolarCloudService
                     'percentage' => (int) $c->percentage,
                     'duration_minutes' => $mins,
                     'duration_human' => $durHuman,
+                    'duration_human_en' => $durHumanEn,
                     'title' => "કર્ટેલમેન્ટ {$durHuman} થી સક્રિય છે!",
+                    'title_en' => "Curtailment active for {$durHumanEn}!",
                     'message' => "{$c->company?->name} માં {$c->percentage}% પાવર કટ લાંબા સમયથી સક્રિય છે. જો જેટકો તરફથી લાઇન ક્લિયર થઈ ગઈ હોય તો પાવર ૧૦૦% રિસ્ટોર કરો જેથી યુનિટ્સનું નુકસાન ન થાય.",
+                    'message_en' => "{$c->percentage}% power curtailment has been active for a prolonged duration on {$c->company?->name}. Restore 100% power if grid instructions allow.",
                 ];
             }
         }
@@ -1428,8 +1439,11 @@ class ISolarCloudService
                 'active' => true,
                 'type' => 'daily_reading_completed',
                 'badge' => '✅ સેવ થઈ ગયું',
+                'badge_en' => '✅ Saved Successfully',
                 'title' => 'આજના રીડિંગ અને યુનિટ કમ્પ્લીટ સેવ થઈ ગયા છે!',
+                'title_en' => 'Today’s Readings and Units Completed & Saved!',
                 'message' => 'આજના રીડિંગના યુનિટ કમ્પ્લીટ સેવ કરી નાખ્યા આવી ગયા છે કમ્પ્લીટ (તમામ મીટર અને ઇન્વર્ટર ડેટા ઓકે છે).',
+                'message_en' => 'Today’s generation units and export meter readings are fully recorded and verified.',
                 'theme' => 'success',
             ];
         } elseif (! empty($todayMeterMissingComps) && $isPast700Pm) {
@@ -1440,8 +1454,11 @@ class ISolarCloudService
                 'active' => true,
                 'type' => 'daily_reading_meter_missing',
                 'badge' => '⚠️ મીટર રીડિંગ બાકી (૭:૦૦ PM પછી)',
+                'badge_en' => '⚠️ Meter Reading Pending (After 7 PM)',
                 'title' => "ઇન્વર્ટર ડેટા ભરાયો છે પણ મીટર રીડિંગ બાકી છે!",
+                'title_en' => "Inverter data entered but physical meter reading pending!",
                 'message' => "{$mNames} ના ઇન્વર્ટર યુનિટ સિસ્ટમમાં સેવ થયેલા છે, પરંતુ પ્લાન્ટ / સબ-સ્ટેશન એક્સપોર્ટ મીટર રીડિંગ (Plant & Sub Export Meter) ભરવાનું બાકી છે. કૃપા કરી દિવસના અંતનું મીટર રીડિંગ સબમિટ કરો.",
+                'message_en' => "Generation for {$mNames} is recorded, but final Export Meter readings are still pending. Please submit meter readings.",
                 'missing_companies' => $todayMeterMissingComps,
                 'theme' => 'warning',
             ];
@@ -1453,8 +1470,11 @@ class ISolarCloudService
                 'active' => true,
                 'type' => 'daily_reading_missing',
                 'badge' => '⏰ રીડિંગ બાકી છે (૭:૩૦ સમય પૂર્ણ)',
+                'badge_en' => '⏰ Reading Overdue (Past 7:30 PM)',
                 'title' => 'આજનું ડેઇલી રીડિંગ હજુ ભરાયું નથી!',
+                'title_en' => 'Today’s daily reading has not been submitted yet!',
                 'message' => "સાંજે ૭:૩૦ વાગ્યા સુધીમાં રીડિંગ ભરવાનો સમય પૂર્ણ થયો છે. {$missingNames} નું મીટર/ઇન્વર્ટર રીડિંગ ભરવાનું બાકી છે. કૃપા કરી તાત્કાલિક એન્ટ્રી પૂરી કરો.",
+                'message_en' => "Daily entry deadline (7:30 PM) has passed. Readings for {$missingNames} are still pending. Please submit immediately.",
                 'missing_companies' => $todayMissingComps,
                 'theme' => 'warning',
             ];
@@ -1466,8 +1486,11 @@ class ISolarCloudService
                 'active' => true,
                 'type' => 'daily_reading_due_now',
                 'badge' => '⏰ રીડિંગ સમય (૬:૧૫ થી ૭:૩૦)',
+                'badge_en' => '⏰ Reading Window (6:15 - 7:30 PM)',
                 'title' => 'આજનું ડેઇલી રીડિંગ ભરવાનો સમય થઈ ગયો છે!',
+                'title_en' => 'Time to enter today’s daily solar readings!',
                 'message' => "સાંજે ૬:૧૫ પછી મીટર અને ઇન્વર્ટરનું રીડિંગ લેવાનું હોય છે. {$missingNames} નું રીડિંગ ૭:૩૦ વાગ્યા સુધીમાં સિસ્ટમમાં સબમિટ કરો.",
+                'message_en' => "Daily reading window is open. Please submit inverter and meter readings for {$missingNames} before 7:30 PM.",
                 'missing_companies' => $todayMissingComps,
                 'theme' => 'info',
             ];
@@ -1514,8 +1537,11 @@ class ISolarCloudService
                 'active' => true,
                 'type' => 'past_reading_missing',
                 'badge' => '🚨 પાછલી તારીખનું રીડિંગ/મીટર બાકી',
+                'badge_en' => '🚨 Past Date Reading Pending',
                 'title' => 'પાછલી તારીખનું ડેઇલી રીડિંગ અથવા મીટર રીડિંગ અધૂરું છે!',
+                'title_en' => 'Past date daily or meter readings are incomplete!',
                 'message' => "નીચેની તારીખનું રીડિંગ સિસ્ટમમાં અધૂરું છે: " . implode(' | ', $dateSummaries) . ". આ તારીખનું મીટર/ઇન્વર્ટર રીડિંગ પૂર્ણ સબમિટ કરો.",
+                'message_en' => "Readings incomplete for: " . implode(' | ', $dateSummaries) . ". Please submit the pending entries.",
                 'missing_dates' => $pastMissingDates,
                 'theme' => 'danger',
             ];
@@ -1537,14 +1563,23 @@ class ISolarCloudService
             'is_overdue' => $daysSinceClean >= 10,
             'is_approaching' => ($daysSinceClean >= 8 && $daysSinceClean < 10),
             'badge' => $daysSinceClean >= 10 ? '⚠️ ૧૦ દિવસ પૂરા (ફેન સાફ કરો)' : ($daysSinceClean >= 8 ? '🔔 ફેન ક્લિનિંગ નજીક છે' : '✅ ફેન ક્લિનિંગ ઓકે'),
+            'badge_en' => $daysSinceClean >= 10 ? '⚠️ 10 Days Overdue (Clean Fan)' : ($daysSinceClean >= 8 ? '🔔 Fan Cleaning Due Soon' : '✅ Fan Filter Clean'),
             'title' => $daysSinceClean >= 10
                 ? "ઇન્વર્ટર ફેન અને જાળી ક્લિનિંગ બાકી છે ({$daysSinceClean} દિવસ થયા)"
                 : ($daysSinceClean >= 8
                     ? "ઇન્વર્ટર ફેન ક્લિનિંગ આગામી {$daysRemaining} દિવસમાં કરવું પડશે"
                     : "ઇન્વર્ટર કૂલિંગ ફેન અને જાળી ક્લિયર છે ({$daysRemaining} દિવસ બાકી)"),
+            'title_en' => $daysSinceClean >= 10
+                ? "Inverter fan & filter cleaning overdue ({$daysSinceClean} days)"
+                : ($daysSinceClean >= 8
+                    ? "Inverter fan cleaning due in {$daysRemaining} days"
+                    : "Inverter cooling fan and mesh are clean ({$daysRemaining} days remaining)"),
             'message' => $daysSinceClean >= 10
                 ? "ઇન્વર્ટર કૂલિંગ ફેન અને એર ફિલ્ટર જાળીને ૧૦ દિવસથી વધુ સમય થઈ ગયો છે. બ્લોઅરથી ધૂળ (Dust) તાત્કાલિક સાફ કરો જેથી ઇન્વર્ટર ગરમ ન થાય અને બળે નહીં."
                 : "ઇન્વર્ટર ફેનની નિયમિત સફાઈ ૧૦-૧૦ દિવસે રાખવી જેથી ઇન્વર્ટરનું આયુષ્ય વધે અને પાવર લોસ ન થાય.",
+            'message_en' => $daysSinceClean >= 10
+                ? "Inverter cooling fan and mesh have exceeded 10 days since last cleaning. Clean dust with blower to prevent overheating."
+                : "Routine fan cleaning every 10 days maximizes inverter lifespan and prevents heat derating.",
             'theme' => $daysSinceClean >= 10 ? 'danger' : ($daysSinceClean >= 8 ? 'warning' : 'success'),
         ];
 

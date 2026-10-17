@@ -1059,7 +1059,7 @@ export default function AttendancePage({canCorrect, canRecord}) {
                                             </div>
 
                                             <div style={{fontSize: '11.5px', color: '#475569', display: 'flex', justifyContent: 'space-between'}}>
-                                                <span>📅 <b>{leave.date_from}</b> {leave.date_from !== leave.date_to ? ` થી ${leave.date_to}` : ''}</span>
+                                                <span>📅 <b>{leave.date_from}</b> {leave.date_from !== leave.date_to ? (currentLang === 'en' ? ` to ${leave.date_to}` : ` થી ${leave.date_to}`) : ''}</span>
                                                 {leave.leave_type?.name && (
                                                     <span style={{color: '#64748b'}}>({leave.leave_type.name})</span>
                                                 )}
