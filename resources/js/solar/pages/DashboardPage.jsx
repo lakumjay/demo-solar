@@ -924,10 +924,10 @@ export default function DashboardPage({companyId, currentUser}) {
                                             padding: '2px 7px',
                                             borderRadius: '4px'
                                         }}>
-                                            {pastReadingMissing.badge}
+                                            {(currentLang === 'en' && pastReadingMissing.badge_en) ? pastReadingMissing.badge_en : pastReadingMissing.badge}
                                         </span>
                                         <b style={{fontSize: '13px', color: '#991b1b'}}>
-                                            {pastReadingMissing.title}
+                                            {(currentLang === 'en' && pastReadingMissing.title_en) ? pastReadingMissing.title_en : pastReadingMissing.title}
                                         </b>
                                     </div>
                                     <span style={{fontSize: '11.5px', color: '#b91c1c'}}>
@@ -966,7 +966,7 @@ export default function DashboardPage({companyId, currentUser}) {
                                     fontSize: '11px',
                                     fontWeight: 700
                                 }}>
-                                    📅 <b>{mDate.date_formatted}</b>: {mDate.companies_label}
+                                    📅 <b>{mDate.date_formatted}</b>: {(currentLang === 'en' && mDate.companies_label_en) ? mDate.companies_label_en : mDate.companies_label}
                                 </span>
                             ))}
                         </div>
@@ -1180,7 +1180,7 @@ export default function DashboardPage({companyId, currentUser}) {
                                 <div className="underperf-card-head">
                                     <div className="underperf-title">
                                         <TrendingDown size={15} style={{color: '#dc2626'}}/>
-                                        <b>{uInv.title}</b>
+                                        <b>{(currentLang === 'en' && uInv.title_en) ? uInv.title_en : uInv.title}</b>
                                     </div>
                                     <span className="underperf-loss-chip">
                                         -{uInv.diff_kwh} kWh (₹{uInv.loss_rs} {currentLang === 'en' ? 'loss' : 'લોસ'})
@@ -1191,7 +1191,7 @@ export default function DashboardPage({companyId, currentUser}) {
                                     <span>{currentLang === 'en' ? 'Normal Benchmark: ' : 'સામાન્ય એવરેજ: '}<b>{uInv.benchmark_kwh} kWh</b></span>
                                     <span>{currentLang === 'en' ? 'Lower: ' : 'ઓછું: '}<b style={{color: '#dc2626'}}>-{uInv.diff_pct}%</b></span>
                                 </div>
-                                <p className="underperf-advice">💡 <b>{currentLang === 'en' ? 'Advice:' : 'સલાહ:'}</b> {uInv.advice}</p>
+                                <p className="underperf-advice">💡 <b>{currentLang === 'en' ? 'Advice:' : 'સલાહ:'}</b> {(currentLang === 'en' && uInv.advice_en) ? uInv.advice_en : uInv.advice}</p>
                             </div>
                         ))}
                     </div>

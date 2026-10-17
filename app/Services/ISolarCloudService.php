@@ -1504,18 +1504,22 @@ class ISolarCloudService
             $pastReadings = DailyReading::whereDate('reading_date', $pastDateStr)->with('outputs')->get()->keyBy('company_id');
 
             $dateMissingDetails = [];
+            $dateMissingDetailsEn = [];
             foreach ($companies as $comp) {
                 $rd = $pastReadings->get($comp->id);
                 if (! $rd) {
                     $dateMissingDetails[] = "{$comp->name} (રીડિંગ બાકી)";
+                    $dateMissingDetailsEn[] = "{$comp->name} (Reading Pending)";
                 } else {
                     $hasInverters = $rd->outputs && $rd->outputs->isNotEmpty() && $rd->outputs->sum('generation') > 0;
                     $hasMeters = (float) $rd->plant_export_reading > 0.01 || (float) $rd->sub_export_reading > 0.01;
 
                     if ($hasInverters && ! $hasMeters) {
                         $dateMissingDetails[] = "{$comp->name} (મીટર રીડિંગ બાકી)";
+                        $dateMissingDetailsEn[] = "{$comp->name} (Meter Reading Pending)";
                     } elseif (! $hasInverters && ! $hasMeters) {
                         $dateMissingDetails[] = "{$comp->name} (રીડિંગ બાકી)";
+                        $dateMissingDetailsEn[] = "{$comp->name} (Reading Pending)";
                     }
                 }
             }
@@ -1525,7 +1529,9 @@ class ISolarCloudService
                     'date_formatted' => $pastDate->format('d M Y'),
                     'date_ymd' => $pastDateStr,
                     'companies' => $dateMissingDetails,
+                    'companies_en' => $dateMissingDetailsEn,
                     'companies_label' => implode(', ', $dateMissingDetails),
+                    'companies_label_en' => implode(', ', $dateMissingDetailsEn),
                 ];
             }
         }

@@ -1732,7 +1732,7 @@ export default function MobileAppView({
                                             fontSize: '10.5px',
                                             fontWeight: 700
                                         }}>
-                                            📅 <b>{mDate.date_formatted}</b>: {mDate.companies_label}
+                                            📅 <b>{mDate.date_formatted}</b>: {(currentLang === 'en' && mDate.companies_label_en) ? mDate.companies_label_en : mDate.companies_label}
                                         </span>
                                     ))}
                                 </div>
