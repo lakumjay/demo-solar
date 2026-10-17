@@ -278,76 +278,84 @@ export default function ExpensesPage({currentUser}) {
                                             <div style={{fontSize: '11px', color: '#64748b'}}>{currentLang === 'en' ? 'Ownership Share:' : 'ભાગીદારી હિસ્સો:'} <b>{comp.percentage}%</b></div>
                                         </div>
                                         <span style={{
-                                            fontSize: '10.5px',
-                                            fontWeight: 800,
-                                            background: badgeBg,
-                                            color: badgeColor,
-                                            padding: '3px 8px',
-                                            borderRadius: '6px'
-                                        }}>
-                                            {comp.status_text}
-                                        </span>
-                                    </div>
+                                             fontSize: '10.5px',
+                                             fontWeight: 800,
+                                             background: badgeBg,
+                                             color: badgeColor,
+                                             padding: '3px 8px',
+                                             borderRadius: '6px'
+                                         }}>
+                                             {currentLang === 'en' ? (comp.status_text_en || comp.status_text) : comp.status_text}
+                                         </span>
+                                     </div>
 
-                                    <div style={{
-                                        background: 'rgba(255,255,255,0.85)',
-                                        borderRadius: '8px',
-                                        padding: '8px 10px',
-                                        display: 'grid',
-                                        gridTemplateColumns: '1fr 1fr',
-                                        gap: '8px',
-                                        border: '1px solid rgba(0,0,0,0.05)'
-                                    }}>
-                                        <div>
-                                            <div style={{fontSize: '10px', color: '#64748b', fontWeight: 600}}>{currentLang === 'en' ? 'Total Paid by Company:' : 'કુલ કાઢેલ રકમ (આપ્યા):'}</div>
-                                            <div style={{fontSize: '14px', fontWeight: 850, color: '#0f172a'}}>₹{comp.total_paid_formatted}</div>
-                                        </div>
-                                        <div>
-                                            <div style={{fontSize: '10px', color: '#64748b', fontWeight: 600}}>{currentLang === 'en' ? 'Expected Share (%):' : 'ટકાવારી મુજબ હિસ્સો:'}</div>
-                                            <div style={{fontSize: '13px', fontWeight: 750, color: '#475569'}}>₹{comp.fair_share_formatted}</div>
-                                        </div>
-                                    </div>
+                                     <div style={{
+                                         background: 'rgba(255,255,255,0.85)',
+                                         borderRadius: '8px',
+                                         padding: '8px 10px',
+                                         display: 'grid',
+                                         gridTemplateColumns: '1fr 1fr',
+                                         gap: '8px',
+                                         border: '1px solid rgba(0,0,0,0.05)'
+                                     }}>
+                                         <div>
+                                             <div style={{fontSize: '10px', color: '#64748b', fontWeight: 600}}>{currentLang === 'en' ? 'Total Paid by Company:' : 'કુલ કાઢેલ રકમ (આપ્યા):'}</div>
+                                             <div style={{fontSize: '14px', fontWeight: 850, color: '#0f172a'}}>₹{comp.total_paid_formatted}</div>
+                                         </div>
+                                         <div>
+                                             <div style={{fontSize: '10px', color: '#64748b', fontWeight: 600}}>{currentLang === 'en' ? 'Expected Share (%):' : 'ટકાવારી મુજબ હિસ્સો:'}</div>
+                                             <div style={{fontSize: '13px', fontWeight: 750, color: '#475569'}}>₹{comp.fair_share_formatted}</div>
+                                         </div>
+                                     </div>
 
-                                    <div style={{fontSize: '11.5px', color: '#334155', lineHeight: '1.4', marginTop: '2px'}}>
-                                        {isReceivable && (
-                                            <span>🟢 <b>{comp.name}</b> {currentLang === 'en' ? 'has spent more than its share. Receivable from partner companies:' : 'એ પોતાના હિસ્સા કરતાં વધુ ખર્ચ કર્યો હોવાથી બીજી કંપનીઓ પાસેથી'} <b>₹{Math.abs(comp.net_balance).toLocaleString('en-IN', {minimumFractionDigits: 2})} લેવાના બાકી</b> છે.</span>
-                                        )}
-                                        {isPayable && (
-                                            <span>🔴 <b>{comp.name}</b> {currentLang === 'en' ? 'has spent less than its share. Payable to partner companies:' : 'એ પોતાના હિસ્સા કરતાં ઓછો ખર્ચ કર્યો હોવાથી બીજી કંપનીઓને'} <b>₹{Math.abs(comp.net_balance).toLocaleString('en-IN', {minimumFractionDigits: 2})} આપવાના બાકી</b> છે.</span>
-                                        )}
-                                        {comp.status_type === 'settled' && (
-                                            <span>⚪ {currentLang === 'en' ? 'All accounts are fully settled.' : 'બધા હિસાબો સંપૂર્ણ સરભર થયેલા છે.'}</span>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
+                                     <div style={{fontSize: '11.5px', color: '#334155', lineHeight: '1.4', marginTop: '2px'}}>
+                                         {isReceivable && (
+                                             <span>🟢 <b>{comp.name}</b> {currentLang === 'en' ? (
+                                                 <>has spent more than its share. Receivable from partner companies: <b>₹{Math.abs(comp.net_balance).toLocaleString('en-IN', {minimumFractionDigits: 2})}</b>.</>
+                                             ) : (
+                                                 <>એ પોતાના હિસ્સા કરતાં વધુ ખર્ચ કર્યો હોવાથી બીજી કંપનીઓ પાસેથી <b>₹{Math.abs(comp.net_balance).toLocaleString('en-IN', {minimumFractionDigits: 2})} લેવાના બાકી</b> છે.</>
+                                             )}</span>
+                                         )}
+                                         {isPayable && (
+                                             <span>🔴 <b>{comp.name}</b> {currentLang === 'en' ? (
+                                                 <>has spent less than its share. Payable to partner companies: <b>₹{Math.abs(comp.net_balance).toLocaleString('en-IN', {minimumFractionDigits: 2})}</b>.</>
+                                             ) : (
+                                                 <>એ પોતાના હિસ્સા કરતાં ઓછો ખર્ચ કર્યો હોવાથી બીજી કંપનીઓને <b>₹{Math.abs(comp.net_balance).toLocaleString('en-IN', {minimumFractionDigits: 2})} આપવાના બાકી</b> છે.</>
+                                             )}</span>
+                                         )}
+                                         {comp.status_type === 'settled' && (
+                                             <span>⚪ {currentLang === 'en' ? 'All accounts are fully settled.' : 'બધા હિસાબો સંપૂર્ણ સરભર થયેલા છે.'}</span>
+                                         )}
+                                     </div>
+                                 </div>
+                             );
+                         })}
+                     </div>
 
-                    {/* ⚖️ પેન્ડિંગ લેતી-દેતીના વાક્યો (Pending Settlement Statements) */}
-                    {data.gujarati_summary.pending_settlements && data.gujarati_summary.pending_settlements.length > 0 && (
-                        <div style={{
-                            background: '#fffbeb',
-                            border: '1px solid #fde68a',
-                            borderRadius: '10px',
-                            padding: '10px 14px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '6px'
-                        }}>
-                            <b style={{fontSize: '12px', color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px'}}>
-                                <span>📌</span> {currentLang === 'en' ? 'Pending Settlements (Who pays whom):' : 'પેન્ડિંગ ચૂકવણી વિગત (કોણે કોને કેટલા આપવાના છે):'}
-                            </b>
-                            <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
-                                {data.gujarati_summary.pending_settlements.map((ps, idx) => (
-                                    <div key={idx} style={{fontSize: '12px', color: '#78350f', display: 'flex', alignItems: 'center', gap: '6px'}}>
-                                        <span>👉</span>
-                                        <span>{ps.sentence_gu}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                     {/* ⚖️ પેન્ડિંગ લેતી-દેતીના વાક્યો (Pending Settlement Statements) */}
+                     {data.gujarati_summary.pending_settlements && data.gujarati_summary.pending_settlements.length > 0 && (
+                         <div style={{
+                             background: '#fffbeb',
+                             border: '1px solid #fde68a',
+                             borderRadius: '10px',
+                             padding: '10px 14px',
+                             display: 'flex',
+                             flexDirection: 'column',
+                             gap: '6px'
+                         }}>
+                             <b style={{fontSize: '12px', color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px'}}>
+                                 <span>📌</span> {currentLang === 'en' ? 'Pending Settlements (Who pays whom):' : 'પેન્ડિંગ ચૂકવણી વિગત (કોણે કોને કેટલા આપવાના છે):'}
+                             </b>
+                             <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
+                                 {data.gujarati_summary.pending_settlements.map((ps, idx) => (
+                                     <div key={idx} style={{fontSize: '12px', color: '#78350f', display: 'flex', alignItems: 'center', gap: '6px'}}>
+                                         <span>👉</span>
+                                         <span>{currentLang === 'en' ? (ps.sentence_en || ps.sentence_gu) : ps.sentence_gu}</span>
+                                     </div>
+                                 ))}
+                             </div>
+                         </div>
+                     )}
                 </section>
             )}
 

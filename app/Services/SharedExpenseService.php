@@ -672,16 +672,20 @@ class SharedExpenseService
             $netOpen = round($receivable - $payable, 2);
 
             $statusText = '';
+            $statusTextEn = '';
             $statusType = 'settled';
             if ($netOpen > 0) {
                 $statusType = 'receivable';
                 $statusText = '₹' . number_format($netOpen, 2) . ' લેવાના બાકી છે';
+                $statusTextEn = '₹' . number_format($netOpen, 2) . ' Receivable';
             } elseif ($netOpen < 0) {
                 $statusType = 'payable';
                 $statusText = '₹' . number_format(abs($netOpen), 2) . ' આપવાના બાકી છે';
+                $statusTextEn = '₹' . number_format(abs($netOpen), 2) . ' Payable';
             } else {
                 $statusType = 'settled';
                 $statusText = 'હિસાબ સરભર છે (0 બાકી)';
+                $statusTextEn = 'Settled (₹0)';
             }
 
             return [
@@ -697,6 +701,7 @@ class SharedExpenseService
                 'net_balance' => $netOpen,
                 'status_type' => $statusType,
                 'status_text' => $statusText,
+                'status_text_en' => $statusTextEn,
                 'is_current_company' => $userCompanyId && (int)$userCompanyId === (int)$company->id,
             ];
         })->values()->all();
@@ -710,6 +715,7 @@ class SharedExpenseService
                 'creditor_name' => $creditor,
                 'amount' => (float) $pair['amount'],
                 'sentence_gu' => "{$debtor} પાસેથી {$creditor} ને ₹{$amt} લેવાના પેન્ડિંગ છે.",
+                'sentence_en' => "₹{$amt} pending: {$debtor} to pay {$creditor}.",
             ];
         })->all();
 
