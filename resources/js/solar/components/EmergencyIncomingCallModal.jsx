@@ -6,6 +6,7 @@ import {
 import { GoogleGenAI, Modality } from '@google/genai';
 import { PcmPlayer, base64ToInt16 } from '../lib/audio';
 import { api, getApiBaseUrl } from '../api';
+import { getLanguage } from '../utils/translations';
 
 /**
  * EmergencyIncomingCallModal
@@ -29,12 +30,19 @@ export default function EmergencyIncomingCallModal({
         }
     })();
 
+    const isEn = getLanguage() === 'en';
     const callerName = callData?.caller_name || '⚡ SolarFlow AI Emergency Dispatch';
     const callerNumber = callData?.caller_number || '+91 1800-SOLAR-AI';
-    const alertTitle = callData?.alert_title || '🚨 ૬૬KV લાઇન ટ્રીપ / ઇન્વર્ટર બંધ એલર્ટ';
-    const plantName = callData?.plant_name || 'ઓલ સોલાર પ્લાન્ટ્સ (All Plants)';
+    const alertTitle = isEn 
+        ? (callData?.alert_title_en || '🚨 66kV Substation Line Trip / Inverter Outage') 
+        : (callData?.alert_title || '🚨 ૬૬KV લાઇન ટ્રીપ / ઇન્વર્ટર બંધ એલર્ટ');
+    const plantName = isEn 
+        ? (callData?.plant_name_en || 'All Solar Plants') 
+        : (callData?.plant_name || 'ઓલ સોલાર પ્લાન્ટ્સ (All Plants)');
     const engineerPhone = callData?.engineer_phone || '+919909900066';
-    const speechText = callData?.speech_text || 'નમસ્તે સુપર એડમિન! સોલાર પ્લાન્ટ પર ઇમરજન્સી એલર્ટ છે. ૬૬KV સબસ્ટેશન લાઇન ટ્રીપ થઈ ગઈ છે અથવા ઇન્વર્ટર બંધ છે. કુલ ઉત્પાદન ૦ kW થઈ ગયું છે. કૃપા કરીને તાત્કાલિક સાઇટ ટીમ અથવા ઇજનેરનો સંપર્ક કરો અને ગ્રીડ ચેક કરો.';
+    const speechText = isEn 
+        ? (callData?.speech_text_en || 'Hello Super Admin! Urgent emergency alert on the solar plant. The 66kV substation line has tripped or inverters are offline. Total active power is 0 kW. Please contact the site engineering team immediately and check grid breakers.') 
+        : (callData?.speech_text || 'નમસ્તે સુપર એડમિન! સોલાર પ્લાન્ટ પર ઇમરજન્સી એલર્ટ છે. ૬૬KV સબસ્ટેશન લાઇન ટ્રીપ થઈ ગઈ છે અથવા ઇન્વર્ટર બંધ છે. કુલ ઉત્પાદન ૦ kW થઈ ગયું છે. કૃપા કરીને તાત્કાલિક સાઇટ ટીમ અથવા ઇજનેરનો સંપર્ક કરો અને ગ્રીડ ચેક કરો.');
 
     const [callState, setCallState] = useState(autoAnswer ? 'connected' : 'incoming'); // incoming, connected, ended
     const [callDuration, setCallDuration] = useState(0);

@@ -28,7 +28,7 @@ export default function CurtailmentLossPage({ companyId, companies = [], current
             const res = await api(`curtailments/loss-analytics?${params.toString()}`);
             setData(res);
         } catch (err) {
-            setError(err?.message || '૬૬KV પાવર કટ અને નુકસાન ડેટા લોડ કરવામાં નિષ્ફળ.');
+            setError(err?.message || (lang === 'en' ? 'Failed to load 66kV power cut and loss data.' : '૬૬KV પાવર કટ અને નુકસાન ડેટા લોડ કરવામાં નિષ્ફળ.'));
         } finally {
             setLoading(false);
         }
@@ -41,7 +41,7 @@ export default function CurtailmentLossPage({ companyId, companies = [], current
     const summary = data?.summary || {
         total_incidents: 0,
         total_duration_minutes: 0,
-        total_duration_human: '0 મિનિટ',
+        total_duration_human: lang === 'en' ? '0 mins' : '0 મિનિટ',
         total_lost_kwh: 0,
         total_lost_revenue_rs: 0,
         is_currently_tripped: false,
@@ -120,11 +120,11 @@ export default function CurtailmentLossPage({ companyId, companies = [], current
                         error={error} 
                         onRetry={loadAnalytics} 
                         fullScreen={false} 
-                        title="૬૬KV ડેટા લોડ થઈ શક્યો નથી"
+                        title={lang === 'en' ? '66kV Data Could Not Be Loaded' : '૬૬KV ડેટા લોડ થઈ શક્યો નથી'}
                     />
                 ) : loading ? (
                     <div className="app-loading inline">
-                        <RefreshCw className="spin" size={20} /> ગ્રીડ ટ્રીપ અને નુકસાન ડેટા લોડ થઈ રહ્યો છે...
+                        <RefreshCw className="spin" size={20} /> {lang === 'en' ? 'Loading grid trip and loss analytics...' : 'ગ્રીડ ટ્રીપ અને નુકસાન ડેટા લોડ થઈ રહ્યો છે...'}
                     </div>
                 ) : (
                     <div>

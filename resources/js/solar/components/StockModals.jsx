@@ -4,6 +4,7 @@ import {api} from '../api';
 import {fixedTwo, number, shortDate} from '../format';
 import {DatePicker, Field} from './Common';
 import {compressImage} from '../utils/imageCompressor';
+import {getLanguage} from '../utils/translations';
 
 const localDate = () => {
     const now = new Date();
@@ -491,7 +492,9 @@ export function BorrowStockModal({items, people, currentUser, selectedItem, onCl
 
                                     {currentItem && form.quantity && Number(form.quantity) > Number(currentItem.available_quantity) && (
                                         <div style={{color: '#dc2626', fontSize: '12px', fontWeight: 700, marginTop: '4px'}}>
-                                            ⚠️ દાખલ કરેલો જથ્થો ઉપલબ્ધ સ્ટોક ({currentItem.available_quantity}) કરતાં વધુ છે!
+                                            {getLanguage() === 'en' 
+                                                ? `⚠️ Entered quantity exceeds available stock (${currentItem.available_quantity})!` 
+                                                : `⚠️ દાખલ કરેલો જથ્થો ઉપલબ્ધ સ્ટોક (${currentItem.available_quantity}) કરતાં વધુ છે!`}
                                         </div>
                                     )}
 
@@ -690,7 +693,9 @@ export function ReturnStockModal({borrowing, people, currentUser, onClose, onSav
                         />
                         {Number(form.quantity) > Number(borrowing.pending_quantity) && (
                             <div style={{color: '#dc2626', fontSize: '11px', fontWeight: 700, marginTop: '3px'}}>
-                                ⚠️ દાખલ કરેલો જથ્થો બાકી નીકળતા જથ્થા ({borrowing.pending_quantity}) કરતાં વધુ છે!
+                                {getLanguage() === 'en'
+                                    ? `⚠️ Entered quantity exceeds pending quantity (${borrowing.pending_quantity})!`
+                                    : `⚠️ દાખલ કરેલો જથ્થો બાકી નીકળતા જથ્થા (${borrowing.pending_quantity}) કરતાં વધુ છે!`}
                             </div>
                         )}
                     </Field>

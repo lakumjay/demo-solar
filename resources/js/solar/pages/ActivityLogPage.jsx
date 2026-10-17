@@ -62,7 +62,7 @@ export default function ActivityLogPage({ companyId }) {
             setTotalRows(res?.total || 0);
             setPage(res?.current_page || targetPage);
         } catch (err) {
-            setError(err?.message || 'એક્ટિવિટી લોગ્સ લોડ કરવામાં સમસ્યા આવી.');
+            setError(err?.message || (lang === 'en' ? 'Failed to load activity logs.' : 'એક્ટિવિટી લોગ્સ લોડ કરવામાં સમસ્યા આવી.'));
         } finally {
             setLoading(false);
         }
@@ -76,7 +76,7 @@ export default function ActivityLogPage({ companyId }) {
             const res = await api('activity/active-sessions');
             setSessions(res?.sessions || []);
         } catch (err) {
-            setSessionsError(err?.message || 'લાઈવ સેશન્સ લોડ કરવામાં સમસ્યા આવી.');
+            setSessionsError(err?.message || (lang === 'en' ? 'Failed to load active login sessions.' : 'લાઈવ સેશન્સ લોડ કરવામાં સમસ્યા આવી.'));
         } finally {
             setSessionsLoading(false);
         }
@@ -96,7 +96,10 @@ export default function ActivityLogPage({ companyId }) {
     };
 
     const handleRevokeSession = async (sessionId) => {
-        if (!window.confirm('શું તમે ખરેખર આ ડિવાઇસમાંથી લૉગઆઉટ કરાવવા માંગો છો?')) return;
+        const confirmMsg = lang === 'en' 
+            ? 'Are you sure you want to log out this device?' 
+            : 'શું તમે ખરેખર આ ડિવાઇસમાંથી લૉગઆઉટ કરાવવા માંગો છો?';
+        if (!window.confirm(confirmMsg)) return;
         setRevokingId(sessionId);
         setRevokeSuccess('');
         try {
@@ -104,11 +107,11 @@ export default function ActivityLogPage({ companyId }) {
                 method: 'POST',
                 body: JSON.stringify({ session_id: sessionId })
             });
-            setRevokeSuccess('સેશન સફળતાપૂર્વક રદ્દ કરવામાં આવ્યું.');
+            setRevokeSuccess(lang === 'en' ? 'Device session revoked successfully.' : 'સેશન સફળતાપૂર્વક રદ્દ કરવામાં આવ્યું.');
             await loadSessions();
             setTimeout(() => setRevokeSuccess(''), 3000);
         } catch (err) {
-            alert(err?.message || 'સેશન રદ્દ કરવામાં નિષ્ફળ.');
+            alert(err?.message || (lang === 'en' ? 'Failed to revoke session.' : 'સેશન રદ્દ કરવામાં નિષ્ફળ.'));
         } finally {
             setRevokingId(null);
         }
@@ -234,16 +237,16 @@ export default function ActivityLogPage({ companyId }) {
                                 error={error} 
                                 onRetry={() => loadLogs(page)} 
                                 fullScreen={false} 
-                                title="એક્ટિવિટી રેકોર્ડ્સ લોડ ન થઈ શક્યા"
+                                title={lang === 'en' ? 'Could not load activity records' : 'એક્ટિવિટી રેકોર્ડ્સ લોડ ન થઈ શક્યા'}
                             />
                         ) : loading ? (
                             <div className="app-loading inline">
-                                <RefreshCw className="spin" size={20} /> લોગ્સ લોડ થઈ રહ્યા છે...
+                                <RefreshCw className="spin" size={20} /> {lang === 'en' ? 'Loading logs...' : 'લોગ્સ લોડ થઈ રહ્યા છે...'}
                             </div>
                         ) : rows.length === 0 ? (
                             <Empty 
-                                title="કોઈ એક્ટિવિટી મળી નથી" 
-                                detail="પસંદ કરેલા ફિલ્ટર મુજબ કોઈ હિસ્ટ્રી રેકોર્ડ ઉપલબ્ધ નથી."
+                                title={lang === 'en' ? 'No activity found' : 'કોઈ એક્ટિવિટી મળી નથી'} 
+                                detail={lang === 'en' ? 'No audit history available for the selected filters.' : 'પસંદ કરેલા ફિલ્ટર મુજબ કોઈ હિસ્ટ્રી રેકોર્ડ ઉપલબ્ધ નથી.'}
                             />
                         ) : (
                             <div className="activity-card-list">
@@ -383,21 +386,23 @@ export default function ActivityLogPage({ companyId }) {
                                 error={sessionsError} 
                                 onRetry={loadSessions} 
                                 fullScreen={false} 
-                                title="સેશન્સ લોડ ન થઈ શક્યા"
+                                title={lang === 'en' ? 'Could not load active sessions' : 'સેશન્સ લોડ ન થઈ શક્યા'}
                             />
                         ) : sessionsLoading ? (
                             <div className="app-loading inline">
-                                <RefreshCw className="spin" size={20} /> એક્ટિવ સેશન્સ તપાસી રહ્યા છીએ...
+                                <RefreshCw className="spin" size={20} /> {lang === 'en' ? 'Checking active sessions...' : 'એક્ટિવ સેશન્સ તપાસી રહ્યા છીએ...'}
                             </div>
                         ) : sessions.length === 0 ? (
                             <Empty 
-                                title="કોઈ સેશન મળ્યું નથી" 
-                                detail="હાલ કોઈ એક્ટિવ સેશન રેકોર્ડ ડેટાબેઝમાં નથી."
+                                title={lang === 'en' ? 'No active sessions found' : 'કોઈ સેશન મળ્યું નથી'} 
+                                detail={lang === 'en' ? 'No active login sessions recorded.' : 'હાલ કોઈ એક્ટિવ સેશન રેકોર્ડ ડેટાબેઝમાં નથી.'}
                             />
                         ) : (
                             <div>
                                 <div style={{ marginBottom: 12, fontSize: 12.5, color: '#64748b' }}>
-                                    નીચે હાલમાં લૉગિન થયેલા તમામ ફોન અને કમ્પ્યુટરનું લાઈવ લિસ્ટ છે. જો કોઈ અજાણ્યા ફોનમાં લૉગિન જણાય, તો તમે તેને તરત જ લૉગઆઉટ કરી શકો છો.
+                                    {lang === 'en' 
+                                        ? 'Below is the live list of phones and computers currently logged in. If you notice any unrecognized device, you can revoke its session immediately.' 
+                                        : 'નીચે હાલમાં લૉગિન થયેલા તમામ ફોન અને કમ્પ્યુટરનું લાઈવ લિસ્ટ છે. જો કોઈ અજાણ્યા ફોનમાં લૉગિન જણાય, તો તમે તેને તરત જ લૉગઆઉટ કરી શકો છો.'}
                                 </div>
 
                                 <div className="active-sessions-grid">
@@ -418,22 +423,22 @@ export default function ActivityLogPage({ companyId }) {
                                                 {/* Status Badge */}
                                                 <div className={`session-status-badge ${s.is_current ? 'current' : 'live'}`}>
                                                     <span className="live-pulse-dot" style={s.is_current ? {} : { background: '#0284c7' }} />
-                                                    <span>{s.is_current ? 'આ ડિવાઇસ (Current)' : 'એક્ટિવ (Live)'}</span>
+                                                    <span>{s.is_current ? (lang === 'en' ? 'This Device (Current)' : 'આ ડિવાઇસ (Current)') : (lang === 'en' ? 'Active (Live)' : 'એક્ટિવ (Live)')}</span>
                                                 </div>
                                             </div>
 
                                             {/* Session Details Table */}
                                             <div className="session-meta-row">
                                                 <div className="session-meta-item">
-                                                    <small>લૉગિન યુઝર:</small>
+                                                    <small>{lang === 'en' ? 'User:' : 'લૉગિન યુઝર:'}</small>
                                                     <span>{s.user_name} ({s.user_role === 'super_admin' ? 'Super Admin' : s.user_role})</span>
                                                 </div>
                                                 <div className="session-meta-item">
-                                                    <small>IP એડ્રેસ:</small>
+                                                    <small>{lang === 'en' ? 'IP Address:' : 'IP એડ્રેસ:'}</small>
                                                     <span style={{ fontFamily: 'monospace' }}>{s.ip_address}</span>
                                                 </div>
                                                 <div className="session-meta-item" style={{ gridColumn: 'span 2' }}>
-                                                    <small>છેલ્લી પ્રવૃત્તિ (Last Active):</small>
+                                                    <small>{lang === 'en' ? 'Last Active:' : 'છેલ્લી પ્રવૃત્તિ (Last Active):'}</small>
                                                     <span>{s.last_active_human} ({new Date(s.last_active_at).toLocaleString('en-GB')})</span>
                                                 </div>
                                             </div>
@@ -448,11 +453,11 @@ export default function ActivityLogPage({ companyId }) {
                                                         onClick={() => handleRevokeSession(s.id)}
                                                     >
                                                         <LogOut size={13} />
-                                                        <span>{revokingId === s.id ? 'લૉગઆઉટ કરી રહ્યા છીએ...' : 'લૉગઆઉટ કરાવો (Revoke)'}</span>
+                                                        <span>{revokingId === s.id ? (lang === 'en' ? 'Logging out...' : 'લૉગઆઉટ કરી રહ્યા છીએ...') : (lang === 'en' ? 'Log Out (Revoke)' : 'લૉગઆઉટ કરાવો (Revoke)')}</span>
                                                     </button>
                                                 ) : (
                                                     <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>
-                                                        ✓ તમે હાલ આ ડિવાઇસ વાપરી રહ્યા છો
+                                                        {lang === 'en' ? '✓ You are using this device' : '✓ તમે હાલ આ ડિવાઇસ વાપરી રહ્યા છો'}
                                                     </span>
                                                 )}
                                             </div>

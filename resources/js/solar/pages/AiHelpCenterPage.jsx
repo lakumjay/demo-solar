@@ -193,7 +193,10 @@ export default function AiHelpCenterPage({ user }) {
     };
 
     const handleRollback = async () => {
-        if (!window.confirm('શું તમે ખરેખર છેલ્લો Git ફેરફાર પાછો ખેંચવા (Rollback) માંગો છો?')) return;
+        const confirmMsg = currentLang === 'en'
+            ? 'Are you sure you want to rollback the last Git commit?'
+            : 'શું તમે ખરેખર છેલ્લો Git ફેરફાર પાછો ખેંચવા (Rollback) માંગો છો?';
+        if (!window.confirm(confirmMsg)) return;
         setActionBusy('rollback');
         setBannerMsg(null);
         try {
@@ -211,7 +214,12 @@ export default function AiHelpCenterPage({ user }) {
         if (e && e.preventDefault) e.preventDefault();
         const activeMode = overrideMode || mode;
         if (!prompt.trim() && screenshots.length === 0) {
-            setBannerMsg({ type: 'error', text: 'કૃપા કરીને તમારો પ્રશ્ન લખો અથવા એરરનો સ્ક્રીનશોટ અપલોડ કરો.' });
+            setBannerMsg({ 
+                type: 'error', 
+                text: currentLang === 'en' 
+                    ? 'Please type your question or upload an error screenshot.' 
+                    : 'કૃપા કરીને તમારો પ્રશ્ન લખો અથવા એરરનો સ્ક્રીનશોટ અપલોડ કરો.' 
+            });
             return;
         }
 
@@ -234,7 +242,9 @@ export default function AiHelpCenterPage({ user }) {
             if (activeMode === 'auto_code') {
                 setBannerMsg({
                     type: 'success',
-                    text: '✅ AI એ કોડ અપડેટ કરીને GitHub અને cPanel પર ડિપ્લોય કરી દીધો છે!'
+                    text: currentLang === 'en'
+                        ? '✅ AI updated code and deployed to GitHub and cPanel!'
+                        : '✅ AI એ કોડ અપડેટ કરીને GitHub અને cPanel પર ડિપ્લોય કરી દીધો છે!'
                 });
             }
             await loadStatus();
@@ -249,7 +259,7 @@ export default function AiHelpCenterPage({ user }) {
         return (
             <div className="panel">
                 <h2>🔒 Super Admin Access Only</h2>
-                <p>આ પેજ માત્ર Super Admin માટે જ ઉપલબ્ધ છે.</p>
+                <p>{currentLang === 'en' ? 'This section is only accessible to Super Admins.' : 'આ પેજ માત્ર Super Admin માટે જ ઉપલબ્ધ છે.'}</p>
             </div>
         );
     }
